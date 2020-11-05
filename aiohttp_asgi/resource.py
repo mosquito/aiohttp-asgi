@@ -17,6 +17,7 @@ _ApplicationColelctionType = t.Union[
     t.List[Application], t.Tuple[Application, ...]
 ]
 
+
 class ASGIMatchInfo(AbstractMatchInfo):
     def __init__(self, handler):
         self._handler = handler
