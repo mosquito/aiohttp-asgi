@@ -13,11 +13,14 @@ from yarl import URL
 
 log = logging.getLogger(__name__)
 
+_ApplicationColelctionType = t.Union[
+    t.List[Application], t.Tuple[Application, ...]
+]
 
 class ASGIMatchInfo(AbstractMatchInfo):
     def __init__(self, handler):
         self._handler = handler
-        self._apps = list()
+        self._apps = list()     # type: _ApplicationColelctionType
 
     @property
     def handler(self) -> t.Callable[[Request], t.Awaitable[StreamResponse]]:
@@ -29,14 +32,14 @@ class ASGIMatchInfo(AbstractMatchInfo):
 
     @property
     def http_exception(self) -> t.Optional[HTTPException]:
-        raise None
+        raise HTTPException
 
     def get_info(self) -> t.Dict[str, t.Any]:
         return {}
 
     @property
-    def apps(self) -> t.Iterable[Application]:
-        if isinstance(self._apps, list):
+    def apps(self) -> t.Tuple[Application, ...]:
+        if not isinstance(self._apps, tuple):
             return tuple(self._apps)
         return self._apps
 
@@ -200,7 +203,7 @@ class ASGIContext:
 
             return
 
-    async def get_response(self) -> StreamResponse:
+    async def get_response(self) -> t.Union[StreamResponse, WebSocketResponse]:
         self.task = self.loop.create_task(
             self.app(
                 self.scope,
@@ -215,6 +218,9 @@ class ASGIContext:
             if not self.task.done():
                 self.task.cancel()
             raise
+
+        if self.response is None:
+            raise RuntimeError
 
         return self.response
 
@@ -271,8 +277,8 @@ class ASGIResource(AbstractResource):
         }
 
     def lifespan_mount(self, app: Application, startup=True, shutdown=False):
-        receives = asyncio.Queue()
-        sends = asyncio.Queue()
+        receives = asyncio.Queue()      # type: asyncio.Queue
+        sends = asyncio.Queue()         # type: asyncio.Queue
 
         async def on_startup(_):
             receives.put_nowait({"type": "lifespan.startup"})
