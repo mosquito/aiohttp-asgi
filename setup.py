@@ -34,13 +34,14 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: Implementation :: PyPy",
         "Programming Language :: Python :: Implementation :: CPython",
     ],
     packages=find_packages(exclude=["tests"]),
     package_data={"aiohttp_asgi": ["py.typed"]},
     install_requires=["aiohttp"],
-    python_requires=">3.5.*, <4",
+    python_requires=">3.6.*, <4",
     extras_require={
         "develop": [
             "aiomisc~=10.1.6",
