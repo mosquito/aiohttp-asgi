@@ -31,7 +31,6 @@ setup(
         "Operating System :: Microsoft",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
@@ -45,7 +44,6 @@ setup(
     extras_require={
         "develop": [
             "aiomisc~=10.1.6",
-            "async_generator",
             "coverage!=4.3",
             "coveralls",
             "pylava",

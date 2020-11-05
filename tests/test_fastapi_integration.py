@@ -1,6 +1,5 @@
 import aiohttp
 import pytest
-from async_generator import yield_, async_generator
 from aiohttp import web, test_utils
 from fastapi import FastAPI
 from starlette.requests import Request as ASGIRequest
@@ -47,7 +46,6 @@ def aiohttp_app():
 
 
 @pytest.fixture
-@async_generator
 async def client(asgi_resource, aiohttp_app):
     aiohttp_app.router.register_resource(asgi_resource)
 
@@ -63,7 +61,7 @@ async def client(asgi_resource, aiohttp_app):
     await test_client.start_server()
 
     try:
-        await yield_(test_client)
+        yield test_client
     finally:
         await test_server.close()
         await test_client.close()
