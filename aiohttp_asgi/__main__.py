@@ -7,6 +7,7 @@ import aiohttp.web
 
 from aiohttp_asgi import ASGIResource
 
+
 parser = ArgumentParser(prog="aiohttp-asgi")
 group = parser.add_argument_group("HTTP options")
 group.add_argument("-a", "--address", help="Listen address", default="::1")
@@ -15,9 +16,11 @@ group.add_argument("--reuse-addr", action="store_true")
 group.add_argument("--reuse-port", action="store_true")
 
 
-parser.add_argument("--log-level", default='info', choices=[
-    'debug', 'info', 'warning', 'error', 'critical'
-])
+parser.add_argument(
+    "--log-level", default="info", choices=[
+        "debug", "info", "warning", "error", "critical",
+    ],
+)
 
 
 def parse_app(app):
@@ -25,7 +28,7 @@ def parse_app(app):
         module_name, asgi_app = app.split(":", 1)
     except ValueError:
         raise ArgumentTypeError(
-            "Should like \"module_name:asgi_application\" not %r" % (app,)
+            "Should like \"module_name:asgi_application\" not %r" % (app,),
         )
 
     try:
@@ -36,8 +39,10 @@ def parse_app(app):
     return getattr(module, asgi_app)
 
 
-parser.add_argument("application", help="ASGI application module",
-                    type=parse_app)
+parser.add_argument(
+    "application", help="ASGI application module",
+    type=parse_app,
+)
 
 
 log = logging.getLogger()
@@ -89,5 +94,5 @@ def main():
         aiohttp.web.run_app(app, sock=sock, print=log.debug)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

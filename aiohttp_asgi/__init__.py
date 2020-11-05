@@ -1,4 +1,4 @@
 from .resource import ASGIResource
 
 
-__all__ = ('ASGIResource',)
+__all__ = ("ASGIResource",)

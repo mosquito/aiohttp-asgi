@@ -5,8 +5,8 @@ import typing as t
 from aiohttp import ClientRequest, WSMsgType
 from aiohttp.abc import AbstractMatchInfo
 from aiohttp.web import (
-    Request, StreamResponse, Application, HTTPException, AbstractResource,
-    WebSocketResponse
+    AbstractResource, Application, HTTPException, Request, StreamResponse,
+    WebSocketResponse,
 )
 from yarl import URL
 
@@ -14,7 +14,7 @@ from yarl import URL
 log = logging.getLogger(__name__)
 
 _ApplicationColelctionType = t.Union[
-    t.List[Application], t.Tuple[Application, ...]
+    t.List[Application], t.Tuple[Application, ...],
 ]
 
 
@@ -59,11 +59,13 @@ _ResponseType = t.Optional[t.Union[StreamResponse, WebSocketResponse]]
 
 class ASGIContext:
     _ws_close_codes = frozenset((
-        WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR
+        WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR,
     ))
 
-    def __init__(self, app: t.Callable[..., t.Any],
-                 request: Request, root_path: str):
+    def __init__(
+        self, app: t.Callable[..., t.Any],
+        request: Request, root_path: str,
+    ):
         self.request = request
         self.app = app
         self.root_path = root_path.rstrip("/")
@@ -76,8 +78,8 @@ class ASGIContext:
 
     def is_webscoket(self):
         return (
-            self.request.headers.get('Connection', '').lower() == 'upgrade' and
-            self.request.headers.get('Upgrade', '').lower() == 'websocket'
+            self.request.headers.get("Connection", "").lower() == "upgrade" and
+            self.request.headers.get("Upgrade", "").lower() == "websocket"
         )
 
     @property
@@ -148,14 +150,14 @@ class ASGIContext:
         }
 
     async def on_send(self, payload):
-        if payload['type'] == 'http.response.start':
+        if payload["type"] == "http.response.start":
             if self.start_response_event.is_set():
                 raise asyncio.InvalidStateError
 
             self.response = StreamResponse()
-            self.response.set_status(payload['status'])
+            self.response.set_status(payload["status"])
 
-            for name, value in payload.get('headers', ()):
+            for name, value in payload.get("headers", ()):
                 header_name = name.title().decode()
                 self.response.headers[header_name] = value.decode()
 
@@ -163,7 +165,7 @@ class ASGIContext:
             self.start_response_event.set()
             return
 
-        if payload['type'] == 'websocket.accept':
+        if payload["type"] == "websocket.accept":
             if self.start_response_event.is_set():
                 raise asyncio.InvalidStateError
 
@@ -171,30 +173,32 @@ class ASGIContext:
             self.writer = await self.response.prepare(self.request)
             return
 
-        if payload['type'] == 'http.response.body':
+        if payload["type"] == "http.response.body":
             if self.writer is None:
                 raise TypeError("Unexpected message %r" % payload, payload)
 
-            await self.writer.write(payload['body'])
+            await self.writer.write(payload["body"])
             # receive_queue.put_nowait({"type": "http.disconnect"})
 
-            if payload.get('more_body', False):
+            if payload.get("more_body", False):
                 await self.writer.write_eof()
             return
 
-        if payload['type'] == 'websocket.send':
+        if payload["type"] == "websocket.send":
             if (
                 isinstance(self.response, WebSocketResponse) and
                 self.response.closed
             ):
                 raise TypeError("Unexpected message %r" % payload, payload)
 
-            message_bytes = payload.get('bytes')
-            message_text = payload.get('text')
+            message_bytes = payload.get("bytes")
+            message_text = payload.get("text")
 
             if not any((message_text, message_bytes)):
-                raise TypeError('Exactly one of bytes or text must be non-None.'
-                                ' One or both keys may be present, however.')
+                raise TypeError(
+                    "Exactly one of bytes or text must be non-None."
+                    " One or both keys may be present, however.",
+                )
 
             if message_bytes is not None:
                 await self.response.send_bytes(message_bytes)
@@ -209,8 +213,8 @@ class ASGIContext:
             self.app(
                 self.scope,
                 self.on_receive,
-                self.on_send
-            )
+                self.on_send,
+            ),
         )
 
         try:
@@ -260,7 +264,7 @@ class ASGIResource(AbstractResource):
 
         return (
             ASGIMatchInfo(self._handle),
-            ClientRequest.ALL_METHODS
+            ClientRequest.ALL_METHODS,
         )
 
     async def _handle(self, request: Request) -> StreamResponse:
@@ -274,7 +278,7 @@ class ASGIResource(AbstractResource):
             "asgi": {
                 "version": "3.0",
                 "spec_version": "1.0",
-            }
+            },
         }
 
     def lifespan_mount(self, app: Application, startup=True, shutdown=False):
@@ -285,13 +289,13 @@ class ASGIResource(AbstractResource):
             receives.put_nowait({"type": "lifespan.startup"})
             while True:
                 msg = await sends.get()
-                if msg['type'] == "lifespan.startup.complete":
+                if msg["type"] == "lifespan.startup.complete":
                     return
 
-                if msg['type'] == "lifespan.startup.failed":
+                if msg["type"] == "lifespan.startup.failed":
                     log.error(
                         "ASGI application %r shutdown failed: %s",
-                        self._asgi_app, msg['message']
+                        self._asgi_app, msg["message"],
                     )
                     return
 
@@ -299,7 +303,7 @@ class ASGIResource(AbstractResource):
             app.on_startup.append(on_startup)
 
         task = asyncio.get_event_loop().create_task(
-            self._asgi_app(self.lifespan_scope, receives.get, sends.put)
+            self._asgi_app(self.lifespan_scope, receives.get, sends.put),
         )
 
         async def on_shutdown(_):
@@ -307,14 +311,14 @@ class ASGIResource(AbstractResource):
 
             while True:
                 msg = await sends.get()
-                if msg['type'] == "lifespan.shutdown.complete":
+                if msg["type"] == "lifespan.shutdown.complete":
                     await task
                     return
 
-                if msg['type'] == "lifespan.shutdown.failed":
+                if msg["type"] == "lifespan.shutdown.failed":
                     log.error(
                         "ASGI application %r shutdown failed: %s",
-                        self._asgi_app, msg['message']
+                        self._asgi_app, msg["message"],
                     )
                     await task
                     return
