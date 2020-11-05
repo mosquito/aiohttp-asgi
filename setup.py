@@ -44,18 +44,15 @@ setup(
     python_requires=">3.6.*, <4",
     extras_require={
         "develop": [
-            "aiomisc~=10.1.6",
             "coverage!=4.3",
             "coveralls",
+            "fastapi",
             "pylava",
             "pytest",
+            "pytest-aiohttp",
             "pytest-cov",
             "tox>=2.4",
         ],
-        "tests": [
-            "fastapi",
-            "pytest-aiohttp",
-        ]
     },
     entry_points={
         'console_scripts': ['aiohttp-asgi = aiohttp_asgi.__main__:main']
