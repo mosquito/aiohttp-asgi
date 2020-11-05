@@ -1,14 +1,13 @@
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Tuple, Callable, Awaitable
+import typing as t
 
 from aiohttp import ClientRequest, WSMsgType
 from aiohttp.abc import AbstractMatchInfo
-from aiohttp.web import Request, StreamResponse
-from aiohttp.web_app import Application
-from aiohttp.web_exceptions import HTTPException
-from aiohttp.web_urldispatcher import AbstractResource
-from aiohttp.web_ws import WebSocketResponse
+from aiohttp.web import (
+    Request, StreamResponse, Application, HTTPException, AbstractResource,
+    WebSocketResponse
+)
 from yarl import URL
 
 
@@ -21,22 +20,22 @@ class ASGIMatchInfo(AbstractMatchInfo):
         self._apps = list()
 
     @property
-    def handler(self) -> Callable[[Request], Awaitable[StreamResponse]]:
+    def handler(self) -> t.Callable[[Request], t.Awaitable[StreamResponse]]:
         return self._handler
 
     @property
-    def expect_handler(self) -> Callable[[Request], Awaitable[None]]:
+    def expect_handler(self) -> t.Callable[[Request], t.Awaitable[None]]:
         raise NotImplementedError
 
     @property
-    def http_exception(self) -> Optional[HTTPException]:
+    def http_exception(self) -> t.Optional[HTTPException]:
         raise None
 
-    def get_info(self) -> Dict[str, Any]:
+    def get_info(self) -> t.Dict[str, t.Any]:
         return {}
 
     @property
-    def apps(self) -> Tuple[Application, ...]:
+    def apps(self) -> t.Iterable[Application]:
         if isinstance(self._apps, list):
             return tuple(self._apps)
         return self._apps
@@ -51,15 +50,24 @@ class ASGIMatchInfo(AbstractMatchInfo):
         self._apps = tuple(self.apps)
 
 
+_ResponseType = t.Optional[t.Union[StreamResponse, WebSocketResponse]]
+
+
 class ASGIContext:
-    def __init__(self, app, request: Request, root_path: str):
+    _ws_close_codes = frozenset((
+        WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR
+    ))
+
+    def __init__(self, app: t.Callable[..., t.Any],
+                 request: Request, root_path: str):
         self.request = request
         self.app = app
         self.root_path = root_path.rstrip("/")
         self.start_response_event = asyncio.Event()
-        self.response = None        # type: Optional[StreamResponse]
-        self.writer = None
-        self.task = None
+        self.ws_connect_event = asyncio.Event()
+        self.response = None        # type: _ResponseType
+        self.writer = None          # type: t.Optional[asyncio.StreamWriter]
+        self.task = None            # type: t.Optional[asyncio.Task]
         self.loop = asyncio.get_event_loop()
 
     def is_webscoket(self):
@@ -88,13 +96,20 @@ class ASGIContext:
 
         if self.is_webscoket():
             result["type"] = "websocket"
-            result["scheme"] = "wss" if self.request.secure else "wss"
+            result["scheme"] = "wss" if self.request.secure else "ws"
             result["subprotocols"] = []
 
         return result
 
     async def on_receive(self):
         if self.is_webscoket():
+            if not self.ws_connect_event.is_set():
+                self.ws_connect_event.set()
+                return {
+                    "type": "websocket.connect",
+                    "headers": tuple(self.request.raw_headers),
+                }
+
             while True:
                 msg = await self.response.receive()
 
@@ -106,7 +121,7 @@ class ASGIContext:
                         bytes_payload = msg.data
 
                     if msg.type == WSMsgType.TEXT:
-                        str_payload = msg.data.decode()
+                        str_payload = msg.data
 
                     return {
                         "type": "websocket.receive",
@@ -114,13 +129,12 @@ class ASGIContext:
                         "text": str_payload,
                     }
 
-                if msg.type == WSMsgType.CLOSE:
+                if msg.type in self._ws_close_codes:
+                    self.start_response_event.set()
                     return {
-                        "type": "websocket.close",
-                        "code": 1000,
+                        "type": "websocket.disconnect",
+                        "code": self.response.close_code,
                     }
-
-                continue
 
         chunk, more_body = await self.request.content.readchunk()
         return {
@@ -150,9 +164,7 @@ class ASGIContext:
                 raise asyncio.InvalidStateError
 
             self.response = WebSocketResponse()
-            await self.response.prepare(self.request)
-            self.start_response_event.set()
-            self.writer = None
+            self.writer = await self.response.prepare(self.request)
             return
 
         if payload['type'] == 'http.response.body':
@@ -167,7 +179,10 @@ class ASGIContext:
             return
 
         if payload['type'] == 'websocket.send':
-            if self.writer is not None:
+            if (
+                isinstance(self.response, WebSocketResponse) and
+                self.response.closed
+            ):
                 raise TypeError("Unexpected message %r" % payload, payload)
 
             message_bytes = payload.get('bytes')
@@ -194,7 +209,13 @@ class ASGIContext:
             )
         )
 
-        await self.start_response_event.wait()
+        try:
+            await self.start_response_event.wait()
+        except asyncio.CancelledError:
+            if not self.task.done():
+                self.task.cancel()
+            raise
+
         return self.response
 
 
@@ -220,7 +241,7 @@ class ASGIResource(AbstractResource):
     def add_prefix(self, prefix: str) -> None:
         raise NotImplementedError
 
-    def get_info(self) -> Dict[str, Any]:
+    def get_info(self) -> t.Dict[str, t.Any]:
         raise NotImplementedError
 
     def raw_match(self, path: str) -> bool:

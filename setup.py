@@ -53,6 +53,10 @@ setup(
             "pytest-cov",
             "tox>=2.4",
         ],
+        "tests": [
+            "fastapi",
+            "pytest-aiohttp",
+        ]
     },
     entry_points={
         'console_scripts': ['aiohttp-asgi = aiohttp_asgi.__main__:main']
