@@ -11,6 +11,14 @@ from aiohttp.web import (
 from yarl import URL
 
 
+try:
+    from aiohttp.web_urldispatcher import (     # type: ignore
+        _InfoDict as ResourceInfoDict
+    )
+except ImportError:
+    ResourceInfoDict = t.Dict[str, t.Any]       # type: ignore
+
+
 log = logging.getLogger(__name__)
 
 _ApplicationColelctionType = t.Union[
@@ -252,7 +260,7 @@ class ASGIResource(AbstractResource):
     def add_prefix(self, prefix: str) -> None:
         raise NotImplementedError
 
-    def get_info(self) -> t.Dict[str, t.Any]:
+    def get_info(self) -> ResourceInfoDict:
         raise NotImplementedError
 
     def raw_match(self, path: str) -> bool:

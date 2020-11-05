@@ -40,7 +40,7 @@ setup(
     ],
     packages=find_packages(exclude=["tests"]),
     package_data={"aiohttp_asgi": ["py.typed"]},
-    install_requires=["aiohttp"],
+    install_requires=["aiohttp<4"],
     python_requires=">3.6.*, <4",
     extras_require={
         "develop": [
