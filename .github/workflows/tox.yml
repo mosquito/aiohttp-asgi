@@ -19,7 +19,6 @@ jobs:
       matrix:
         linter:
           - lint
-          - checkdoc
 
     steps:
       - uses: actions/checkout@v2
