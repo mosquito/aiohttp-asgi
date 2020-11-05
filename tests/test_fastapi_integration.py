@@ -97,4 +97,3 @@ async def test_route_ws(client: test_utils.TestClient):
         for i in range(10):
             response = await ws.receive_json()
             assert response == {"hello": "world", "i": i, "echo": True}
-
