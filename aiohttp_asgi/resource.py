@@ -3,12 +3,21 @@ import logging
 import typing as t
 
 from aiohttp import ClientRequest, WSMsgType
-from aiohttp.abc import AbstractMatchInfo
+from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
 from aiohttp.web import (
     AbstractResource, Application, HTTPException, Request, StreamResponse,
     WebSocketResponse,
 )
 from yarl import URL
+
+ASGIReciveType = t.Callable[[t.Dict[str, t.Any]], t.Any]
+ASGISendType = t.Callable[[t.Dict[str, t.Any]], t.Any]
+ASGIScopeType = t.Dict[str, t.Any]
+
+ASGIApplicationType = t.Callable[
+    [ASGIScopeType, ASGIReciveType, ASGISendType],
+    t.Any
+]
 
 
 try:
@@ -27,7 +36,7 @@ _ApplicationColelctionType = t.Union[
 
 
 class ASGIMatchInfo(AbstractMatchInfo):
-    def __init__(self, handler):
+    def __init__(self, handler: t.Callable[..., t.Any]):
         self._handler = handler
         self._apps = list()     # type: _ApplicationColelctionType
 
@@ -63,6 +72,7 @@ class ASGIMatchInfo(AbstractMatchInfo):
 
 
 _ResponseType = t.Optional[t.Union[StreamResponse, WebSocketResponse]]
+_WriterType = t.Optional[AbstractStreamWriter]
 
 
 class ASGIContext:
@@ -75,13 +85,16 @@ class ASGIContext:
         request: Request, root_path: str,
     ):
         self.request = request
+
+        connection_hdr = request.headers.get("Connection", "").lower()
+        self.http_version = "1.1" if connection_hdr == 'keep-alive' else '1.0'
         self.app = app
         self.root_path = root_path.rstrip("/")
         self.start_response_event = asyncio.Event()
         self.ws_connect_event = asyncio.Event()
-        self.response = None        # type: _ResponseType
-        self.writer = None          # type: t.Optional[asyncio.StreamWriter]
-        self.task = None            # type: t.Optional[asyncio.Task]
+        self.response = None   # type: _ResponseType
+        self.writer = None     # type: _WriterType
+        self.task = None       # type: t.Optional[asyncio.Task]
         self.loop = asyncio.get_event_loop()
 
     def is_webscoket(self):
@@ -96,7 +109,7 @@ class ASGIContext:
 
         result = {
             "type": "http",
-            "http_version": "1.1",
+            "http_version": self.http_version,
             "server": [self.request.url.host, self.request.url.port],
             "client": [self.request.remote, 0],
             "scheme": self.request.url.scheme,
@@ -157,7 +170,7 @@ class ASGIContext:
             "more_body": more_body,
         }
 
-    async def on_send(self, payload):
+    async def on_send(self, payload: t.Dict[str, t.Any]):
         if payload["type"] == "http.response.start":
             if self.start_response_event.is_set():
                 raise asyncio.InvalidStateError
@@ -199,6 +212,9 @@ class ASGIContext:
             ):
                 raise TypeError("Unexpected message %r" % payload, payload)
 
+            if not isinstance(self.response, WebSocketResponse):
+                raise RuntimeError("Wrong response type")
+
             message_bytes = payload.get("bytes")
             message_text = payload.get("text")
 
@@ -239,7 +255,8 @@ class ASGIContext:
 
 
 class ASGIResource(AbstractResource):
-    def __init__(self, app, root_path="/", name=None):
+    def __init__(self, app: ASGIApplicationType, root_path="/",
+                 name: str = None):
         super().__init__(name=name)
         self._root_path = root_path
         self._asgi_app = app
