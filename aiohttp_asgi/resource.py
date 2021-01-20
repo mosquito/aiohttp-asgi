@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import typing as t
+from contextlib import contextmanager
 
 from aiohttp import ClientRequest, WSMsgType
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
@@ -39,6 +40,7 @@ class ASGIMatchInfo(AbstractMatchInfo):
     def __init__(self, handler: t.Callable[..., t.Any]):
         self._handler = handler
         self._apps = list()     # type: _ApplicationColelctionType
+        self._current_app = None
 
     @property
     def handler(self) -> t.Callable[[Request], t.Awaitable[StreamResponse]]:
@@ -50,7 +52,11 @@ class ASGIMatchInfo(AbstractMatchInfo):
 
     @property
     def http_exception(self) -> t.Optional[HTTPException]:
-        raise HTTPException
+        return None
+
+    @property
+    def route(self):
+        return None
 
     def get_info(self) -> t.Dict[str, t.Any]:
         return {}
@@ -69,6 +75,18 @@ class ASGIMatchInfo(AbstractMatchInfo):
 
     def freeze(self) -> None:
         self._apps = tuple(self.apps)
+
+    @contextmanager
+    def set_current_app(
+        self,
+        app: Application,
+    ) -> t.Generator[None, None, None]:
+        prev = self._current_app
+        self._current_app = app
+        try:
+            yield
+        finally:
+            self._current_app = prev
 
 
 _ResponseType = t.Optional[t.Union[StreamResponse, WebSocketResponse]]
@@ -269,7 +287,7 @@ class ASGIResource(AbstractResource):
 
     @property
     def canonical(self) -> str:
-        return "%s/{asgi path}" % (self._root_path.rstip("/"),)
+        return "%s/{asgi path}" % (self._root_path.rstrip("/"),)
 
     def url_for(self, **kwargs: str) -> URL:
         return URL(self._root_path)
