@@ -95,3 +95,52 @@ async def test_route_ws(loop, client: test_utils.TestClient):
         for i in range(10):
             response = await ws.receive_json()
             assert response == {"hello": "world", "i": i, "echo": True}
+
+
+@web.middleware
+async def dummy_middleware(request, handler):
+    return await handler(request)
+
+
+@pytest.mark.parametrize(
+    'middlewares',
+    (
+        (
+            web.normalize_path_middleware(
+                remove_slash=True,
+                append_slash=False,
+            ),
+        ),
+        (dummy_middleware,),
+        (
+            web.normalize_path_middleware(
+                remove_slash=True,
+                append_slash=False,
+            ),
+            dummy_middleware,
+        ),
+    )
+)
+@pytest.mark.usefixtures('loop')
+async def test_normalize_path_middleware(asgi_resource, middlewares):
+    aiohttp_app = web.Application(middlewares=middlewares)
+    aiohttp_app.router.register_resource(asgi_resource)
+    asgi_resource.lifespan_mount(
+        aiohttp_app,
+        startup=True,
+        shutdown=True,
+    )
+
+    async with test_utils.TestServer(aiohttp_app) as test_server:
+        async with test_utils.TestClient(test_server) as client:
+            async with client.get("/asgi") as response:
+                response.raise_for_status()
+                body = await response.json()
+
+            assert body == {'message': 'Hello World', 'root_path': ''}
+
+            async with client.get("/not-found") as response:
+                with pytest.raises(aiohttp.ClientError) as err:
+                    response.raise_for_status()
+
+            assert err.value.status == 404

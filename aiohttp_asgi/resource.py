@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import typing as t
+from contextlib import contextmanager
 
 from aiohttp import ClientRequest, WSMsgType
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
@@ -10,12 +11,12 @@ from aiohttp.web import (
 )
 from yarl import URL
 
-ASGIReciveType = t.Callable[[t.Dict[str, t.Any]], t.Any]
+ASGIReceiveType = t.Callable[[], t.Awaitable[t.Dict[str, t.Any]]]
 ASGISendType = t.Callable[[t.Dict[str, t.Any]], t.Any]
 ASGIScopeType = t.Dict[str, t.Any]
 
 ASGIApplicationType = t.Callable[
-    [ASGIScopeType, ASGIReciveType, ASGISendType],
+    [ASGIScopeType, ASGIReceiveType, ASGISendType],
     t.Any
 ]
 
@@ -39,6 +40,7 @@ class ASGIMatchInfo(AbstractMatchInfo):
     def __init__(self, handler: t.Callable[..., t.Any]):
         self._handler = handler
         self._apps = list()     # type: _ApplicationColelctionType
+        self._current_app: t.Optional[Application] = None
 
     @property
     def handler(self) -> t.Callable[[Request], t.Awaitable[StreamResponse]]:
@@ -50,7 +52,11 @@ class ASGIMatchInfo(AbstractMatchInfo):
 
     @property
     def http_exception(self) -> t.Optional[HTTPException]:
-        raise HTTPException
+        return None
+
+    @property
+    def route(self):
+        return None
 
     def get_info(self) -> t.Dict[str, t.Any]:
         return {}
@@ -69,6 +75,18 @@ class ASGIMatchInfo(AbstractMatchInfo):
 
     def freeze(self) -> None:
         self._apps = tuple(self.apps)
+
+    @contextmanager
+    def set_current_app(
+        self,
+        app: Application,
+    ) -> t.Generator[None, None, None]:
+        prev = self._current_app
+        self._current_app = app
+        try:
+            yield
+        finally:
+            self._current_app = prev
 
 
 _ResponseType = t.Optional[t.Union[StreamResponse, WebSocketResponse]]
@@ -97,7 +115,7 @@ class ASGIContext:
         self.task = None       # type: t.Optional[asyncio.Task]
         self.loop = asyncio.get_event_loop()
 
-    def is_webscoket(self):
+    def is_websocket(self):
         return (
             self.request.headers.get("Connection", "").lower() == "upgrade" and
             self.request.headers.get("Upgrade", "").lower() == "websocket"
@@ -121,7 +139,7 @@ class ASGIContext:
             "headers": [hdr for hdr in self.request.raw_headers],
         }
 
-        if self.is_webscoket():
+        if self.is_websocket():
             result["type"] = "websocket"
             result["scheme"] = "wss" if self.request.secure else "ws"
             result["subprotocols"] = []
@@ -129,7 +147,7 @@ class ASGIContext:
         return result
 
     async def on_receive(self):
-        if self.is_webscoket():
+        if self.is_websocket():
             if not self.ws_connect_event.is_set():
                 self.ws_connect_event.set()
                 return {
@@ -269,7 +287,7 @@ class ASGIResource(AbstractResource):
 
     @property
     def canonical(self) -> str:
-        return "%s/{asgi path}" % (self._root_path.rstip("/"),)
+        return "%s/{asgi path}" % (self._root_path.rstrip("/"),)
 
     def url_for(self, **kwargs: str) -> URL:
         return URL(self._root_path)
