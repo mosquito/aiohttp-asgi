@@ -280,6 +280,9 @@ class ASGIResource(AbstractResource):
         self._asgi_app = app
 
     def __iter__(self):
+        return self
+
+    def __next__(self):
         raise StopIteration
 
     def __len__(self):

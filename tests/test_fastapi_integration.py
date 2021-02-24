@@ -144,3 +144,11 @@ async def test_normalize_path_middleware(asgi_resource, middlewares):
                     response.raise_for_status()
 
             assert err.value.status == 404
+
+
+def test_get_routes_from_resource(asgi_resource):
+    assert len(asgi_resource) == 0
+
+    for _ in asgi_resource:
+        # Should be unreachable
+        pytest.fail('ASGIResource should not return routes during iteration')
