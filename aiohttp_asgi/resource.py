@@ -136,7 +136,7 @@ class ASGIContext:
             "path": self.request.path,
             "raw_path": raw_path.encode(),
             "query_string": self.request.query_string.encode(),
-            "headers": [hdr for hdr in self.request.raw_headers],
+            "headers": [(k.lower(), v) for k, v in self.request.raw_headers],
         }
 
         if self.is_websocket():
