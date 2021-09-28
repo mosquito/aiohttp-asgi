@@ -1,4 +1,3 @@
-import aiohttp
 import pytest
 from aiohttp import web, test_utils
 from aiohttp_asgi import ASGIResource
