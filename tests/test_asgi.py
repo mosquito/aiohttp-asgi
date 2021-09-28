@@ -25,6 +25,8 @@ def asgi_resource():
                 "body": data.encode()
             })
 
+            return
+
     return ASGIResource(asgi_app, root_path="/")
 
 
@@ -36,12 +38,6 @@ def aiohttp_app():
 @pytest.fixture
 async def client(loop, asgi_resource, aiohttp_app):
     aiohttp_app.router.register_resource(asgi_resource)
-
-    asgi_resource.lifespan_mount(
-        aiohttp_app,
-        startup=False,
-        shutdown=False,
-    )
 
     test_server = test_utils.TestServer(aiohttp_app)
     test_client = test_utils.TestClient(test_server)
