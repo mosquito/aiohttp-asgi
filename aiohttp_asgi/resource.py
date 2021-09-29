@@ -220,6 +220,7 @@ class ASGIContext:
             # receive_queue.put_nowait({"type": "http.disconnect"})
 
             if payload.get("more_body", False):
+                await self.writer.drain()
                 await self.writer.write_eof()
             return
 
