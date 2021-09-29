@@ -217,7 +217,6 @@ class ASGIContext:
                 raise TypeError("Unexpected message %r" % payload, payload)
 
             await self.writer.write(payload["body"])
-            # receive_queue.put_nowait({"type": "http.disconnect"})
 
             if payload.get("more_body", False):
                 await self.writer.drain()
