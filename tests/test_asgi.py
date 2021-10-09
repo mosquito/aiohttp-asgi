@@ -1,6 +1,14 @@
+from io import BytesIO
+
 import pytest
-from aiohttp import web, test_utils
+import string
+from aiohttp import test_utils, web
+
 from aiohttp_asgi import ASGIResource
+
+
+ASGI_LONG_BODY_PARTS = 10
+ASGI_LONG_BODY = string.ascii_lowercase.encode() * 1024
 
 
 @pytest.fixture
@@ -12,17 +20,23 @@ def asgi_resource():
             if payload.get("type") != "http.request":
                 continue
 
-            data = 'a' * 65600 * 1024
-
             await send({
                 "type": "http.response.start",
                 "status": 200,
-                "headers": []
+                "headers": [],
             })
+
+            for i in range(ASGI_LONG_BODY_PARTS - 1):
+                await send({
+                    "type": "http.response.body",
+                    "body": ASGI_LONG_BODY,
+                    "more_body": True,
+                })
 
             await send({
                 "type": "http.response.body",
-                "body": data.encode()
+                "body": ASGI_LONG_BODY,
+                "more_body": False,
             })
 
             return
@@ -54,5 +68,14 @@ async def client(loop, asgi_resource, aiohttp_app):
 async def test_basic(loop, client: test_utils.TestClient):
     async with client.get("/") as response:
         response.raise_for_status()
-        body = await response.read()
+
+        with BytesIO() as fp:
+            async for chunk in response.content.iter_any():
+                fp.write(chunk)
+            body = fp.getvalue()
+
         assert body
+
+        body_len = len(body)
+        expected_len = len(ASGI_LONG_BODY) * ASGI_LONG_BODY_PARTS
+        assert body_len == expected_len

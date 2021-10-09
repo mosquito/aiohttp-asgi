@@ -3,7 +3,7 @@ import logging
 import typing as t
 from contextlib import contextmanager
 
-from aiohttp import ClientRequest, WSMsgType
+from aiohttp import ClientRequest, WSMsgType, hdrs
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
 from aiohttp.web import (
     AbstractResource, Application, HTTPException, Request, StreamResponse,
@@ -11,19 +11,20 @@ from aiohttp.web import (
 )
 from yarl import URL
 
+
 ASGIReceiveType = t.Callable[[], t.Awaitable[t.Dict[str, t.Any]]]
 ASGISendType = t.Callable[[t.Dict[str, t.Any]], t.Any]
 ASGIScopeType = t.Dict[str, t.Any]
 
 ASGIApplicationType = t.Callable[
     [ASGIScopeType, ASGIReceiveType, ASGISendType],
-    t.Any
+    t.Any,
 ]
 
 
 try:
-    from aiohttp.web_urldispatcher import (     # type: ignore
-        _InfoDict as ResourceInfoDict
+    from aiohttp.web_urldispatcher import (
+        _InfoDict as ResourceInfoDict,  # type: ignore
     )
 except ImportError:
     ResourceInfoDict = t.Dict[str, t.Any]       # type: ignore
@@ -105,7 +106,7 @@ class ASGIContext:
         self.request = request
 
         connection_hdr = request.headers.get("Connection", "").lower()
-        self.http_version = "1.1" if connection_hdr == 'keep-alive' else '1.0'
+        self.http_version = "1.1" if connection_hdr == "keep-alive" else "1.0"
         self.app = app
         self.root_path = root_path.rstrip("/")
         self.start_response_event = asyncio.Event()
@@ -200,6 +201,9 @@ class ASGIContext:
                 header_name = name.title().decode()
                 self.response.headers[header_name] = value.decode()
 
+            if not self.response.headers.get(hdrs.CONTENT_LENGTH):
+                self.response.enable_chunked_encoding()
+
             self.writer = await self.response.prepare(self.request)
             self.start_response_event.set()
             return
@@ -216,11 +220,11 @@ class ASGIContext:
             if self.writer is None:
                 raise TypeError("Unexpected message %r" % payload, payload)
 
-            await self.writer.write(payload["body"])
-
             if payload.get("more_body", False):
-                await self.writer.drain()
-                await self.writer.write_eof()
+                await self.writer.write(payload["body"])
+                return
+
+            await self.writer.write_eof(payload["body"])
             return
 
         if payload["type"] == "websocket.send":
@@ -273,8 +277,10 @@ class ASGIContext:
 
 
 class ASGIResource(AbstractResource):
-    def __init__(self, app: ASGIApplicationType, root_path="/",
-                 name: str = None):
+    def __init__(
+        self, app: ASGIApplicationType, root_path="/",
+        name: str = None,
+    ):
         super().__init__(name=name)
         self._root_path = root_path
         self._asgi_app = app

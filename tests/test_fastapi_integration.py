@@ -1,9 +1,10 @@
 import aiohttp
 import pytest
-from aiohttp import web, test_utils
+from aiohttp import test_utils, web
 from fastapi import FastAPI
 from starlette.requests import Request as ASGIRequest
-from starlette.websockets import WebSocket as ASGIWebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocket as ASGIWebSocket
+from starlette.websockets import WebSocketDisconnect
 
 from aiohttp_asgi import ASGIResource
 
@@ -19,7 +20,7 @@ def routes(asgi_app):
     async def root(request: ASGIRequest):
         return {
             "message": "Hello World",
-            "root_path": request.scope.get("root_path")
+            "root_path": request.scope.get("root_path"),
         }
 
     @asgi_app.websocket("/ws")
@@ -68,17 +69,19 @@ async def client(loop, asgi_resource, aiohttp_app):
 
 
 async def test_route_asgi(loop, client: test_utils.TestClient):
-    async with client.get("/asgi") as response:
-        response.raise_for_status()
-        body = await response.json()
-
-    assert body == {'message': 'Hello World', 'root_path': ''}
-
-    async with client.get("/not-found") as response:
-        with pytest.raises(aiohttp.ClientError) as err:
+    for _ in range(10):
+        async with client.get("/asgi") as response:
             response.raise_for_status()
+            body = await response.json()
 
-        assert err.value.status == 404
+        assert body == {"message": "Hello World", "root_path": ""}
+
+    for _ in range(10):
+        async with client.get("/not-found") as response:
+            with pytest.raises(aiohttp.ClientError) as err:
+                response.raise_for_status()
+
+            assert err.value.status == 404
 
 
 async def test_route_ws(loop, client: test_utils.TestClient):
@@ -103,7 +106,7 @@ async def dummy_middleware(request, handler):
 
 
 @pytest.mark.parametrize(
-    'middlewares',
+    "middlewares",
     (
         (
             web.normalize_path_middleware(
@@ -119,9 +122,9 @@ async def dummy_middleware(request, handler):
             ),
             dummy_middleware,
         ),
-    )
+    ),
 )
-@pytest.mark.usefixtures('loop')
+@pytest.mark.usefixtures("loop")
 async def test_normalize_path_middleware(asgi_resource, middlewares):
     aiohttp_app = web.Application(middlewares=middlewares)
     aiohttp_app.router.register_resource(asgi_resource)
@@ -137,7 +140,7 @@ async def test_normalize_path_middleware(asgi_resource, middlewares):
                 response.raise_for_status()
                 body = await response.json()
 
-            assert body == {'message': 'Hello World', 'root_path': ''}
+            assert body == {"message": "Hello World", "root_path": ""}
 
             async with client.get("/not-found") as response:
                 with pytest.raises(aiohttp.ClientError) as err:
@@ -151,4 +154,4 @@ def test_get_routes_from_resource(asgi_resource):
 
     for _ in asgi_resource:
         # Should be unreachable
-        pytest.fail('ASGIResource should not return routes during iteration')
+        pytest.fail("ASGIResource should not return routes during iteration")
