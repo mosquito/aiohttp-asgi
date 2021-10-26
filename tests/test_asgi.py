@@ -1,11 +1,11 @@
+import string
 from io import BytesIO
+from unittest import mock
 
 import pytest
-import string
-from aiohttp import test_utils, web
+from aiohttp import web, test_utils
 
 from aiohttp_asgi import ASGIResource
-
 
 ASGI_LONG_BODY_PARTS = 10
 ASGI_LONG_BODY = string.ascii_lowercase.encode() * 1024
@@ -66,6 +66,20 @@ async def client(loop, asgi_resource, aiohttp_app):
 
 
 async def test_basic(loop, client: test_utils.TestClient):
+    raised = False
+
+    class TestStreamResponse(web.StreamResponse):
+        async def write_eof(self, data: bytes=b'') -> None:
+            nonlocal raised
+
+            try:
+                await super().write_eof(data=data)
+            except AssertionError:
+                raised = True
+                raise
+
+    mock.patch('aiohttp_asgi.resource.StreamResponse', TestStreamResponse)
+
     async with client.get("/") as response:
         response.raise_for_status()
 
@@ -79,3 +93,4 @@ async def test_basic(loop, client: test_utils.TestClient):
         body_len = len(body)
         expected_len = len(ASGI_LONG_BODY) * ASGI_LONG_BODY_PARTS
         assert body_len == expected_len
+        assert not raised

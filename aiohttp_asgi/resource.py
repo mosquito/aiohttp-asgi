@@ -255,20 +255,11 @@ class ASGIContext:
             return
 
     async def get_response(self) -> t.Union[StreamResponse, WebSocketResponse]:
-        self.task = self.loop.create_task(
-            self.app(
-                self.scope,
-                self.on_receive,
-                self.on_send,
-            ),
+        await self.app(
+            self.scope,
+            self.on_receive,
+            self.on_send,
         )
-
-        try:
-            await self.start_response_event.wait()
-        except asyncio.CancelledError:
-            if not self.task.done():
-                self.task.cancel()
-            raise
 
         if self.response is None:
             raise RuntimeError
