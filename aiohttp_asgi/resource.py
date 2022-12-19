@@ -1,16 +1,16 @@
 import asyncio
 import logging
-from typing import (
-    Optional, Awaitable, Dict, Mapping, List, Protocol, Any,
-    Callable, Union, Tuple, Generator
-)
 from contextlib import contextmanager
+from typing import (
+    Any, Awaitable, Callable, Coroutine, Dict, Generator, List, MutableMapping,
+    Optional, Tuple, Union,
+)
 
 from aiohttp import ClientRequest, WSMsgType, hdrs
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
 from aiohttp.web import (
     AbstractResource, Application, HTTPException, Request, StreamResponse,
-    WebSocketResponse
+    WebSocketResponse,
 )
 from yarl import URL
 
