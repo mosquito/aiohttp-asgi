@@ -1,24 +1,27 @@
 import asyncio
 import logging
-import typing as t
+from typing import (
+    Optional, Awaitable, Dict, Mapping, List, Protocol, Any,
+    Callable, Union, Tuple, Generator
+)
 from contextlib import contextmanager
 
 from aiohttp import ClientRequest, WSMsgType, hdrs
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
 from aiohttp.web import (
     AbstractResource, Application, HTTPException, Request, StreamResponse,
-    WebSocketResponse,
+    WebSocketResponse
 )
 from yarl import URL
 
 
-ASGIReceiveType = t.Callable[[], t.Awaitable[t.Dict[str, t.Any]]]
-ASGISendType = t.Callable[[t.Dict[str, t.Any]], t.Any]
-ASGIScopeType = t.Dict[str, t.Any]
+ASGIScopeType = MutableMapping[str, Any]
+ASGIReceiveType = Callable[[], Awaitable[MutableMapping[str, Any]]]
+ASGISendType = Callable[[MutableMapping[str, Any]], Any]
 
-ASGIApplicationType = t.Callable[
+ASGIApplicationType = Callable[
     [ASGIScopeType, ASGIReceiveType, ASGISendType],
-    t.Any,
+    Coroutine[Any, Any, Any],
 ]
 
 
@@ -27,43 +30,43 @@ try:
         _InfoDict as ResourceInfoDict,  # type: ignore
     )
 except ImportError:
-    ResourceInfoDict = t.Dict[str, t.Any]       # type: ignore
+    ResourceInfoDict = Dict[str, Any]       # type: ignore
 
 
 log = logging.getLogger(__name__)
 
-_ApplicationColelctionType = t.Union[
-    t.List[Application], t.Tuple[Application, ...],
+_ApplicationColelctionType = Union[
+    List[Application], Tuple[Application, ...],
 ]
 
 
 class ASGIMatchInfo(AbstractMatchInfo):
-    def __init__(self, handler: t.Callable[..., t.Any]):
+    def __init__(self, handler: Callable[..., Any]):
         self._handler = handler
         self._apps = list()     # type: _ApplicationColelctionType
-        self._current_app: t.Optional[Application] = None
+        self._current_app: Optional[Application] = None
 
     @property
-    def handler(self) -> t.Callable[[Request], t.Awaitable[StreamResponse]]:
+    def handler(self) -> Callable[[Request], Awaitable[StreamResponse]]:
         return self._handler
 
     @property
-    def expect_handler(self) -> t.Callable[[Request], t.Awaitable[None]]:
+    def expect_handler(self) -> Callable[[Request], Awaitable[None]]:
         raise NotImplementedError
 
     @property
-    def http_exception(self) -> t.Optional[HTTPException]:
+    def http_exception(self) -> Optional[HTTPException]:
         return None
 
     @property
     def route(self):
         return None
 
-    def get_info(self) -> t.Dict[str, t.Any]:
+    def get_info(self) -> Dict[str, Any]:
         return {}
 
     @property
-    def apps(self) -> t.Tuple[Application, ...]:
+    def apps(self) -> Tuple[Application, ...]:
         if not isinstance(self._apps, tuple):
             return tuple(self._apps)
         return self._apps
@@ -81,7 +84,7 @@ class ASGIMatchInfo(AbstractMatchInfo):
     def set_current_app(
         self,
         app: Application,
-    ) -> t.Generator[None, None, None]:
+    ) -> Generator[None, None, None]:
         prev = self._current_app
         self._current_app = app
         try:
@@ -90,8 +93,8 @@ class ASGIMatchInfo(AbstractMatchInfo):
             self._current_app = prev
 
 
-_ResponseType = t.Optional[t.Union[StreamResponse, WebSocketResponse]]
-_WriterType = t.Optional[AbstractStreamWriter]
+_ResponseType = Optional[Union[StreamResponse, WebSocketResponse]]
+_WriterType = Optional[AbstractStreamWriter]
 
 
 class ASGIContext:
@@ -100,7 +103,7 @@ class ASGIContext:
     ))
 
     def __init__(
-        self, app: t.Callable[..., t.Any],
+        self, app: Callable[..., Any],
         request: Request, root_path: str,
     ):
         self.request = request
@@ -189,7 +192,7 @@ class ASGIContext:
             "more_body": more_body,
         }
 
-    async def on_send(self, payload: t.Dict[str, t.Any]):
+    async def on_send(self, payload: Dict[str, Any]):
         if payload["type"] == "http.response.start":
             if self.start_response_event.is_set():
                 raise asyncio.InvalidStateError
@@ -254,7 +257,7 @@ class ASGIContext:
 
             return
 
-    async def get_response(self) -> t.Union[StreamResponse, WebSocketResponse]:
+    async def get_response(self) -> Union[StreamResponse, WebSocketResponse]:
         await self.app(
             self.scope,
             self.on_receive,
