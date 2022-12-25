@@ -178,15 +178,15 @@ class ASGIContext:
 
     async def on_receive(self) -> Dict[str, Any]:
         if self.is_websocket():
-            assert isinstance(self.response, WebSocketResponse)
-            response: WebSocketResponse = self.response
-
             if not self.ws_connect_event.is_set():
                 self.ws_connect_event.set()
                 return {
                     "type": "websocket.connect",
                     "headers": tuple(self.request.raw_headers),
                 }
+
+            assert isinstance(self.response, WebSocketResponse)
+            response: WebSocketResponse = self.response
 
             while True:
                 msg: WSMessage = await response.receive()
