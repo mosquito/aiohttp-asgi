@@ -3,16 +3,22 @@ import logging
 from contextlib import contextmanager
 from typing import (
     Any, Awaitable, Callable, Coroutine, Dict, Generator, List, MutableMapping,
-    Optional, Tuple, Union,
+    Optional, Set, Tuple, Union,
 )
 
-from aiohttp import ClientRequest, WSMsgType, hdrs
+from aiohttp import ClientRequest, WSMessage, WSMsgType, hdrs
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
 from aiohttp.web import (
     AbstractResource, Application, HTTPException, Request, StreamResponse,
     WebSocketResponse,
 )
 from yarl import URL
+
+
+try:
+    from typing import TypedDict
+except ImportError:
+    from typing_extensions import TypedDict
 
 
 ASGIScopeType = MutableMapping[str, Any]
@@ -30,7 +36,7 @@ try:
         _InfoDict as ResourceInfoDict,  # type: ignore
     )
 except ImportError:
-    ResourceInfoDict = Dict[str, Any]       # type: ignore
+    ResourceInfoDict = Dict[str, Any]      # type: ignore
 
 
 log = logging.getLogger(__name__)
@@ -38,6 +44,31 @@ log = logging.getLogger(__name__)
 _ApplicationColelctionType = Union[
     List[Application], Tuple[Application, ...],
 ]
+
+
+class ScopeDict(TypedDict):
+    type: str
+    http_version: str
+    server: List[Union[str, int, None]]
+    client: List[Union[str, int, None]]
+    scheme: str
+    method: str
+    root_path: str
+    path: str
+    raw_path: bytes
+    query_string: bytes
+    headers: List[Tuple[bytes, bytes]]
+    subprotocols: Optional[List[str]]
+
+
+class ASGIDict(TypedDict):
+    version: str
+    spec_version: str
+
+
+class LifespanDict(TypedDict):
+    type: str
+    asgi: ASGIDict
 
 
 class ASGIMatchInfo(AbstractMatchInfo):
@@ -59,7 +90,7 @@ class ASGIMatchInfo(AbstractMatchInfo):
         return None
 
     @property
-    def route(self):
+    def route(self) -> None:
         return None
 
     def get_info(self) -> Dict[str, Any]:
@@ -114,34 +145,35 @@ class ASGIContext:
         self.root_path = root_path.rstrip("/")
         self.start_response_event = asyncio.Event()
         self.ws_connect_event = asyncio.Event()
-        self.response = None   # type: _ResponseType
-        self.writer = None     # type: _WriterType
-        self.task = None       # type: t.Optional[asyncio.Task]
+        self.response: _ResponseType = None
+        self.writer: _WriterType = None
+        self.task: Optional[asyncio.Task] = None
         self.loop = asyncio.get_event_loop()
 
-    def is_websocket(self):
+    def is_websocket(self) -> bool:
         return (
             self.request.headers.get("Connection", "").lower() == "upgrade" and
             self.request.headers.get("Upgrade", "").lower() == "websocket"
         )
 
     @property
-    def scope(self) -> dict:
+    def scope(self) -> ScopeDict:
         raw_path = self.request.raw_path
 
-        result = {
-            "type": "http",
-            "http_version": self.http_version,
-            "server": [self.request.url.host, self.request.url.port],
-            "client": [self.request.remote, 0],
-            "scheme": self.request.url.scheme,
-            "method": self.request.method,
-            "root_path": self.root_path,
-            "path": self.request.path,
-            "raw_path": raw_path.encode(),
-            "query_string": self.request.query_string.encode(),
-            "headers": [(k.lower(), v) for k, v in self.request.raw_headers],
-        }
+        result = ScopeDict(
+            type="http",
+            http_version=self.http_version,
+            server=[self.request.url.host, self.request.url.port],
+            client=[self.request.remote, 0],
+            scheme=self.request.url.scheme,
+            method=self.request.method,
+            root_path=self.root_path,
+            path=self.request.path,
+            raw_path=raw_path.encode(),
+            query_string=self.request.query_string.encode(),
+            headers=[(k.lower(), v) for k, v in self.request.raw_headers],
+            subprotocols=None,
+        )
 
         if self.is_websocket():
             result["type"] = "websocket"
@@ -150,7 +182,7 @@ class ASGIContext:
 
         return result
 
-    async def on_receive(self):
+    async def on_receive(self) -> Dict[str, Any]:
         if self.is_websocket():
             if not self.ws_connect_event.is_set():
                 self.ws_connect_event.set()
@@ -159,8 +191,11 @@ class ASGIContext:
                     "headers": tuple(self.request.raw_headers),
                 }
 
+            assert isinstance(self.response, WebSocketResponse)
+            response: WebSocketResponse = self.response
+
             while True:
-                msg = await self.response.receive()
+                msg: WSMessage = await response.receive()
 
                 if msg.type in (WSMsgType.BINARY, WSMsgType.TEXT):
                     bytes_payload = None
@@ -182,7 +217,7 @@ class ASGIContext:
                     self.start_response_event.set()
                     return {
                         "type": "websocket.disconnect",
-                        "code": self.response.close_code,
+                        "code": response.close_code,
                     }
 
         chunk, more_body = await self.request.content.readchunk()
@@ -192,7 +227,7 @@ class ASGIContext:
             "more_body": more_body,
         }
 
-    async def on_send(self, payload: Dict[str, Any]):
+    async def on_send(self, payload: Dict[str, Any]) -> None:
         if payload["type"] == "http.response.start":
             if self.start_response_event.is_set():
                 raise asyncio.InvalidStateError
@@ -271,21 +306,23 @@ class ASGIContext:
 
 
 class ASGIResource(AbstractResource):
+    SHUTDOWN_TIMEOUT = 60
+
     def __init__(
-        self, app: ASGIApplicationType, root_path="/",
-        name: str = None,
+        self, app: ASGIApplicationType, root_path: str = "/",
+        name: Optional[str] = None,
     ):
         super().__init__(name=name)
         self._root_path = root_path
         self._asgi_app = app
 
-    def __iter__(self):
+    def __iter__(self) -> Any:
         return self
 
-    def __next__(self):
+    def __next__(self) -> Any:
         raise StopIteration
 
-    def __len__(self):
+    def __len__(self) -> int:
         return 0
 
     @property
@@ -304,7 +341,9 @@ class ASGIResource(AbstractResource):
     def raw_match(self, path: str) -> bool:
         return path.startswith(self._root_path)
 
-    async def resolve(self, request: Request):
+    async def resolve(
+        self, request: Request,
+    ) -> Tuple[Optional[ASGIMatchInfo], Set[str]]:
         if not self.raw_match(request.path):
             return None, set()
 
@@ -318,58 +357,79 @@ class ASGIResource(AbstractResource):
         return await ctx.get_response()
 
     @property
-    def lifespan_scope(self) -> dict:
-        return {
-            "type": "lifespan",
-            "asgi": {
-                "version": "3.0",
-                "spec_version": "1.0",
-            },
-        }
+    def lifespan_scope(self) -> LifespanDict:
+        return LifespanDict(
+            type="lifespan",
+            asgi=ASGIDict(version="3.0", spec_version="1.0"),
+        )
 
-    def lifespan_mount(self, app: Application, startup=True, shutdown=False):
-        receives = asyncio.Queue()      # type: asyncio.Queue
-        sends = asyncio.Queue()         # type: asyncio.Queue
+    def lifespan_mount(self, app: Application) -> None:
+        async def lifespan(_: Any) -> Any:
+            loop = asyncio.get_event_loop()
+            receives: asyncio.Queue = asyncio.Queue()
+            sends: asyncio.Queue = asyncio.Queue()
 
-        async def on_startup(_):
-            receives.put_nowait({"type": "lifespan.startup"})
+            await receives.put({"type": "lifespan.startup"})
+
+            asgi_lifespan_task: asyncio.Task = loop.create_task(
+                self._asgi_app(
+                    self.lifespan_scope,        # type: ignore
+                    receives.get,
+                    sends.put,
+                ),
+            )
+
             while True:
                 msg = await sends.get()
                 if msg["type"] == "lifespan.startup.complete":
-                    return
-
-                if msg["type"] == "lifespan.startup.failed":
+                    log.info(
+                        "ASGI application %r startup completed.",
+                        self._asgi_app,
+                    )
+                    break
+                elif msg["type"] == "lifespan.startup.failed":
                     log.error(
-                        "ASGI application %r shutdown failed: %s",
+                        "ASGI application %r startup failed: %s",
                         self._asgi_app, msg["message"],
                     )
-                    return
+                    break
+                else:
+                    log.error("Unexpected ASGI message when startup: %r", msg)
+                    break
 
-        if startup:
-            app.on_startup.append(on_startup)
+            yield
 
-        task = asyncio.get_event_loop().create_task(
-            self._asgi_app(self.lifespan_scope, receives.get, sends.put),
-        )
+            await receives.put({"type": "lifespan.shutdown"})
 
-        async def on_shutdown(_):
-            receives.put_nowait({"type": "lifespan.shutdown"})
+            if asgi_lifespan_task.done():
+                asgi_lifespan_task = loop.create_task(
+                    self._asgi_app(
+                        self.lifespan_scope,    # type: ignore
+                        receives.get,
+                        sends.put,
+                    ),
+                )
 
             while True:
                 msg = await sends.get()
                 if msg["type"] == "lifespan.shutdown.complete":
-                    await task
-                    return
-
-                if msg["type"] == "lifespan.shutdown.failed":
+                    log.info(
+                        "ASGI application %r shutdown completed.",
+                        self._asgi_app,
+                    )
+                    break
+                elif msg["type"] == "lifespan.shutdown.failed":
                     log.error(
                         "ASGI application %r shutdown failed: %s",
                         self._asgi_app, msg["message"],
                     )
-                    await task
-                    return
+                    break
+                else:
+                    log.error("Unexpected ASGI message when shutdown: %r", msg)
+                    break
 
-        if shutdown:
-            app.on_shutdown.append(on_shutdown)
-        else:
-            app.on_shutdown.append(lambda _: task)
+            await asyncio.wait_for(
+                asgi_lifespan_task, timeout=self.SHUTDOWN_TIMEOUT,
+            )
+
+        app.cleanup_ctx.append(lifespan)

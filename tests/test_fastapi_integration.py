@@ -47,14 +47,10 @@ def aiohttp_app():
 
 
 @pytest.fixture
-async def client(loop, asgi_resource, aiohttp_app):
+async def client(event_loop, asgi_resource, aiohttp_app):
     aiohttp_app.router.register_resource(asgi_resource)
 
-    asgi_resource.lifespan_mount(
-        aiohttp_app,
-        startup=True,
-        shutdown=True,
-    )
+    asgi_resource.lifespan_mount(aiohttp_app)
 
     test_server = test_utils.TestServer(aiohttp_app)
     test_client = test_utils.TestClient(test_server)
@@ -68,7 +64,7 @@ async def client(loop, asgi_resource, aiohttp_app):
         await test_client.close()
 
 
-async def test_route_asgi(loop, client: test_utils.TestClient):
+async def test_route_asgi(event_loop, client: test_utils.TestClient):
     for _ in range(10):
         async with client.get("/asgi") as response:
             response.raise_for_status()
@@ -81,10 +77,10 @@ async def test_route_asgi(loop, client: test_utils.TestClient):
             with pytest.raises(aiohttp.ClientError) as err:
                 response.raise_for_status()
 
-            assert err.value.status == 404
+            assert err.value.status == 404      # type: ignore
 
 
-async def test_route_ws(loop, client: test_utils.TestClient):
+async def test_route_ws(event_loop, client: test_utils.TestClient):
     async with client.ws_connect("/ws") as ws:
         for i in range(10):
             await ws.send_json({"hello": "world", "i": i})
@@ -124,15 +120,11 @@ async def dummy_middleware(request, handler):
         ),
     ),
 )
-@pytest.mark.usefixtures("loop")
+@pytest.mark.usefixtures("event_loop")
 async def test_normalize_path_middleware(asgi_resource, middlewares):
     aiohttp_app = web.Application(middlewares=middlewares)
     aiohttp_app.router.register_resource(asgi_resource)
-    asgi_resource.lifespan_mount(
-        aiohttp_app,
-        startup=True,
-        shutdown=True,
-    )
+    asgi_resource.lifespan_mount(aiohttp_app)
 
     async with test_utils.TestServer(aiohttp_app) as test_server:
         async with test_utils.TestClient(test_server) as client:
@@ -146,7 +138,7 @@ async def test_normalize_path_middleware(asgi_resource, middlewares):
                 with pytest.raises(aiohttp.ClientError) as err:
                     response.raise_for_status()
 
-            assert err.value.status == 404
+            assert err.value.status == 404      # type: ignore
 
 
 def test_get_routes_from_resource(asgi_resource):

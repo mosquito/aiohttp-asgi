@@ -3,16 +3,17 @@ from io import BytesIO
 from unittest import mock
 
 import pytest
-from aiohttp import web, test_utils
+from aiohttp import test_utils, web
 
 from aiohttp_asgi import ASGIResource
+
 
 ASGI_LONG_BODY_PARTS = 10
 ASGI_LONG_BODY = string.ascii_lowercase.encode() * 1024
 
 
 @pytest.fixture
-def asgi_resource():
+def asgi_resource() -> ASGIResource:
     async def asgi_app(scope, receive, send):
         while True:
             payload = await receive()
@@ -50,7 +51,7 @@ def aiohttp_app():
 
 
 @pytest.fixture
-async def client(loop, asgi_resource, aiohttp_app):
+async def client(event_loop, asgi_resource, aiohttp_app):
     aiohttp_app.router.register_resource(asgi_resource)
 
     test_server = test_utils.TestServer(aiohttp_app)
@@ -65,11 +66,11 @@ async def client(loop, asgi_resource, aiohttp_app):
         await test_client.close()
 
 
-async def test_basic(loop, client: test_utils.TestClient):
+async def test_basic(event_loop, client: test_utils.TestClient):
     raised = False
 
     class TestStreamResponse(web.StreamResponse):
-        async def write_eof(self, data: bytes=b'') -> None:
+        async def write_eof(self, data: bytes = b"") -> None:
             nonlocal raised
 
             try:
@@ -78,7 +79,7 @@ async def test_basic(loop, client: test_utils.TestClient):
                 raised = True
                 raise
 
-    mock.patch('aiohttp_asgi.resource.StreamResponse', TestStreamResponse)
+    mock.patch("aiohttp_asgi.resource.StreamResponse", TestStreamResponse)
 
     async with client.get("/") as response:
         response.raise_for_status()

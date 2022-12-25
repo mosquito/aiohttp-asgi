@@ -15,6 +15,7 @@ from starlette.requests import Request as ASGIRequest
 
 from aiohttp_asgi import ASGIResource
 
+
 asgi_app = FastAPI()
 
 
@@ -30,24 +31,13 @@ aiohttp_app = web.Application()
 
 # Create ASGIResource which handle
 # any request startswith "/asgi"
-asgi_resource = ASGIResource(
-    asgi_app,
-    root_path="/asgi"
-)
+asgi_resource = ASGIResource(asgi_app, root_path="/asgi")
 
 # Register resource
-aiohttp_app.router.register_resource(
-    asgi_resource
-)
+aiohttp_app.router.register_resource(asgi_resource)
 
-# [Optional]
-asgi_resource.lifespan_mount(
-    aiohttp_app,
-    startup=True,
-    # By default starlette didn't
-    # handle "lifespan.shutdown"
-    shutdown=False,
-)
+# Mount startup and shutdown events from aiohttp to ASGI app
+asgi_resource.lifespan_mount(aiohttp_app)
 
 # Start the application
 web.run_app(aiohttp_app)

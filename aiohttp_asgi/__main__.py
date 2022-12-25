@@ -2,11 +2,12 @@ import importlib
 import logging
 import socket
 from argparse import ArgumentParser, ArgumentTypeError
+from typing import Any
 
 import aiohttp.web
 
 from aiohttp_asgi import ASGIResource
-
+from aiohttp_asgi.resource import ASGIApplicationType
 
 parser = ArgumentParser(prog="aiohttp-asgi")
 group = parser.add_argument_group("HTTP options")
@@ -23,7 +24,7 @@ parser.add_argument(
 )
 
 
-def parse_app(app):
+def parse_app(app: str) -> ASGIApplicationType:
     try:
         module_name, asgi_app = app.split(":", 1)
     except ValueError:
@@ -49,9 +50,9 @@ log = logging.getLogger()
 
 
 def bind_socket(
-    *args, address: str, port: int,
+    *args: Any, address: str, port: int,
     reuse_addr: bool = True, reuse_port: bool = False
-):
+) -> socket.socket:
     if not args:
         if ":" in address:
             args = (socket.AF_INET6, socket.SOCK_STREAM)
@@ -78,7 +79,7 @@ def bind_socket(
     return sock
 
 
-def main():
+def main() -> None:
     arguments = parser.parse_args()
     logging.basicConfig(level=getattr(logging, arguments.log_level.upper()))
 
