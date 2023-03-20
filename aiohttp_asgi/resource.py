@@ -220,11 +220,11 @@ class ASGIContext:
                         "code": response.close_code,
                     }
 
-        chunk, more_body = await self.request.content.readchunk()
+        chunk, _ = await self.request.content.readchunk()
         return {
             "type": "http.request",
             "body": chunk,
-            "more_body": more_body,
+            "more_body": not self.request.content.at_eof(),
         }
 
     async def on_send(self, payload: Dict[str, Any]) -> None:
