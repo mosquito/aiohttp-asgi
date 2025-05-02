@@ -125,6 +125,7 @@ class ASGIMatchInfo(AbstractMatchInfo):
         warn("The set_current_app() context manager is deprecated, please use add_app() instead (https://github.com/mosquito/aiohttp-asgi/pull/11)!", DeprecationWarning)
         prev = self._current_app
         self.add_app(app)
+        self._current_app = app
         try:
             yield
         finally:
