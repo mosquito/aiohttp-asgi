@@ -5,6 +5,7 @@ from typing import (
     Any, Awaitable, Callable, Coroutine, Dict, Generator, List, MutableMapping,
     Optional, Set, Tuple, Union,
 )
+from warnings import warn
 
 from aiohttp import ClientRequest, WSMessage, WSMsgType, hdrs
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
@@ -116,17 +117,19 @@ class ASGIMatchInfo(AbstractMatchInfo):
             self._current_app = app
         self._apps.insert(0, app)
 
-    # @contextmanager
-    # def set_current_app(
-    #     self,
-    #     app: Application,
-    # ) -> Generator[None, None, None]:
-    #     prev = self._current_app
-    #     self._current_app = app
-    #     try:
-    #         yield
-    #     finally:
-    #         self._current_app = prev
+    @contextmanager
+    def set_current_app(
+        self,
+        app: Application,
+    ) -> Generator[None, None, None]:
+        warn("The set_current_app() context manager is deprecated, please use add_app() instead (https://github.com/mosquito/aiohttp-asgi/pull/11)!", DeprecationWarning)
+        prev = self._current_app
+        self.add_app(app)
+        try:
+            yield
+        finally:
+            self._current_app = prev
+            self._apps.pop(0)
 
     @property
     def current_app(self) -> "Application":
