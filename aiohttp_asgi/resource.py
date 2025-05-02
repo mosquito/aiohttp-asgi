@@ -107,10 +107,10 @@ class ASGIMatchInfo(AbstractMatchInfo):
         return self._apps
 
     @property
-    def apps(self) -> Tuple["Application", ...]:
+    def apps(self) -> Tuple[Application, ...]:
         return tuple(self._apps)
 
-    def add_app(self, app: "Application") -> None:
+    def add_app(self, app: Application) -> None:
         if self._frozen:
             raise RuntimeError("Cannot change apps stack after .freeze() call")
         if self._current_app is None:
@@ -132,13 +132,13 @@ class ASGIMatchInfo(AbstractMatchInfo):
             self._apps.pop(0)
 
     @property
-    def current_app(self) -> "Application":
+    def current_app(self) -> Application:
         app = self._current_app
         assert app is not None
         return app
 
     @current_app.setter
-    def current_app(self, app: "Application") -> None:
+    def current_app(self, app: Application) -> None:
         if DEBUG:  # pragma: no cover
             if app not in self._apps:
                 raise RuntimeError(
