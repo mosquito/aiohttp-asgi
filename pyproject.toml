@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aiohttp_asgi"
-version = "0.5.2"
+version = "0.6.0"
 description = "Adapter to running ASGI applications on aiohttp"
 authors = ["Dmitry Orlov <me@mosquito.su>"]
 readme = "README.md"
