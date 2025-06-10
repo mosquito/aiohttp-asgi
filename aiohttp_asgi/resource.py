@@ -283,12 +283,15 @@ class ASGIContext:
         if payload["type"] == "http.response.body":
             if self.writer is None:
                 raise TypeError("Unexpected message %r" % payload, payload)
-
-            if payload.get("more_body", False):
-                await self.writer.write(payload["body"])
+            body = payload.get('body')
+            if body is None:
                 return
 
-            await self.writer.write_eof(payload["body"])
+            if payload.get("more_body", False):
+                await self.writer.write(body)
+                return
+
+            await self.writer.write_eof(body)
             return
 
         if payload["type"] == "websocket.send":
