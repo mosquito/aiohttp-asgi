@@ -1,7 +1,7 @@
 aiohttp-asgi
 ============
 
-[![PyPI - License](https://img.shields.io/pypi/l/aiohttp-asgi)](https://pypi.org/project/aiohttp-asgi) [![Wheel](https://img.shields.io/pypi/wheel/aiohttp-asgi)](https://pypi.org/project/aiohttp-asgi) [![PyPI](https://img.shields.io/pypi/v/aiohttp-asgi)](https://pypi.org/project/aiohttp-asgi) [![PyPI](https://img.shields.io/pypi/pyversions/aiohttp-asgi)](https://pypi.org/project/aiohttp-asgi) [![Coverage Status](https://coveralls.io/repos/github/mosquito/aiohttp-asgi/badge.svg?branch=master)](https://coveralls.io/github/mosquito/aiohttp-asgi?branch=master) ![tox](https://github.com/mosquito/aiohttp-asgi/workflows/tox/badge.svg?branch=master)
+[![PyPI - License](https://img.shields.io/pypi/l/aiohttp-asgi)](https://pypi.org/project/aiohttp-asgi) [![Wheel](https://img.shields.io/pypi/wheel/aiohttp-asgi)](https://pypi.org/project/aiohttp-asgi) [![PyPI](https://img.shields.io/pypi/v/aiohttp-asgi)](https://pypi.org/project/aiohttp-asgi) [![PyPI](https://img.shields.io/pypi/pyversions/aiohttp-asgi)](https://pypi.org/project/aiohttp-asgi) [![Coverage Status](https://coveralls.io/repos/github/mosquito/aiohttp-asgi/badge.svg?branch=master)](https://coveralls.io/github/mosquito/aiohttp-asgi?branch=master) ![tests](https://github.com/mosquito/aiohttp-asgi/workflows/tests/badge.svg?branch=master)
 
 This module provides a way to use any ASGI compatible frameworks and aiohttp together.
 
