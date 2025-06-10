@@ -38,7 +38,7 @@ def routes(asgi_app):
     @asgi_app.post("/upload")
     async def upload_endpoint(request: ASGIRequest):
         headers = dict(request.scope["headers"])
-        expect_header = headers.get("expect", b"").decode().lower()
+        expect_header = headers.get(b"expect", b"").decode().lower()
 
         body = await request.body()
 
