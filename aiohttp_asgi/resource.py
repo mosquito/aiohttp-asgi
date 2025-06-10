@@ -43,7 +43,7 @@ class ResourceInfoDict(TypedDict, total=False):
     """
     Redefining `aiohttp.web_urldispatcher._InfoDict`.
     It is not total and just using for better typing.
-    Do not afraid this.
+    Do not be afraid of this.
     """
 
     path: str
