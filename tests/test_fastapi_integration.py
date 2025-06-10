@@ -1,3 +1,7 @@
+import asyncio
+from asyncio import current_task
+from ctypes import pythonapi
+
 import aiohttp
 import pytest
 from aiohttp import test_utils, web
@@ -34,6 +38,19 @@ def routes(asgi_app):
                 await websocket.send_json(data)
             except WebSocketDisconnect:
                 return
+
+    @asgi_app.post("/upload")
+    async def upload_endpoint(request: ASGIRequest):
+        headers = dict(request.scope["headers"])
+        expect_header = headers.get("expect", b"").decode().lower()
+
+        body = await request.body()
+
+        return {
+            "received_expect": expect_header,
+            "body_size": len(body),
+            "message": "success",
+        }
 
 
 @pytest.fixture
@@ -146,3 +163,18 @@ def test_get_routes_from_resource(asgi_resource):
     for _ in asgi_resource:
         # Should be unreachable
         pytest.fail("ASGIResource should not return routes during iteration")
+
+
+async def test_expect_handler_basic(client: test_utils.TestClient):
+    test_data = b"This is test data for upload"
+
+    async with client.post(
+        "/upload",
+        data=test_data,
+        headers={"Expect": "100-continue", "Content-Type": "application/octet-stream"},
+    ) as resp:
+        assert resp.status == 200
+        data = await resp.json()
+
+        assert data["body_size"] == len(test_data)
+        assert data["message"] == "success"

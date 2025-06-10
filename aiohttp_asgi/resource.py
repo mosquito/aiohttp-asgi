@@ -1,6 +1,9 @@
 import asyncio
 import logging
 from contextlib import contextmanager
+from contextvars import ContextVar
+from pathlib import Path
+from re import Pattern
 from types import MappingProxyType
 from typing import (
     Any, Awaitable, Callable, Coroutine, Dict, Generator, List, Mapping,
@@ -13,8 +16,12 @@ from aiohttp import ClientRequest, WSMessage, WSMsgType, hdrs
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
 from aiohttp.helpers import DEBUG
 from aiohttp.web import (
-    AbstractResource, Application, HTTPException, Request, StreamResponse,
-    WebSocketResponse,
+    AbstractResource, AbstractRoute, Application, HTTPException, Request,
+    StreamResponse, WebSocketResponse,
+)
+from aiohttp.web_urldispatcher import AbstractRuleMatching
+from aiohttp.web_urldispatcher import (
+    _default_expect_handler as default_expect_handler,
 )
 from yarl import URL
 
@@ -29,15 +36,26 @@ ASGIApplicationType = Callable[
 ]
 
 
-try:
-    from aiohttp.web_urldispatcher import (
-        _InfoDict as ResourceInfoDict,  # type: ignore
-    )
-except ImportError:
-    ResourceInfoDict = Dict[str, Any]      # type: ignore
-
-
 log = logging.getLogger(__name__)
+
+
+class ResourceInfoDict(TypedDict, total=False):
+    """
+    Redefining `aiohttp.web_urldispatcher._InfoDict`.
+    It is not total and just using for better typing.
+    Do not afraid this.
+    """
+
+    path: str
+    formatter: str
+    pattern: Pattern[str]
+    directory: Path
+    prefix: str
+    routes: Mapping[str, AbstractRoute]
+    app: Application
+    domain: str
+    rule: AbstractRuleMatching
+    http_exception: HTTPException
 
 
 class ScopeDict(TypedDict):
@@ -65,20 +83,25 @@ class LifespanDict(TypedDict):
     asgi: ASGIDict
 
 
+
 class ASGIMatchInfo(AbstractMatchInfo):
+    CURRENT_APP: ContextVar[Application] = ContextVar("CURRENT_APP")
+
     def __init__(self, handler: Callable[..., Any]):
         self._handler = handler
-        self._apps: List[Application] = list()
-        self._current_app: Optional[Application] = None
-        self._frozen = False
+        self._apps: Union[List[Application], Tuple[Application, ...]] = list()
+
+    @property
+    def frozen(self) -> bool:
+        return isinstance(self._apps, tuple)
 
     @property
     def handler(self) -> Callable[[Request], Awaitable[StreamResponse]]:
         return self._handler
 
     @property
-    def expect_handler(self) -> Callable[[Request], Awaitable[None]]:
-        raise NotImplementedError
+    def expect_handler(self) -> Optional[Callable[[Request], Awaitable[None]]]:
+        return default_expect_handler
 
     @property
     def http_exception(self) -> Optional[HTTPException]:
@@ -93,15 +116,15 @@ class ASGIMatchInfo(AbstractMatchInfo):
 
     @property
     def apps(self) -> Tuple[Application, ...]:
-        if not isinstance(self._apps, tuple):
-            return tuple(self._apps)
-        return self._apps
+        if self.frozen:
+            return self._apps
+        return tuple(self._apps)
 
     def add_app(self, app: Application) -> None:
-        if self._frozen:
+        if isinstance(self._apps, tuple):
             raise RuntimeError("Cannot change apps stack after .freeze() call")
-        if self._current_app is None:
-            self._current_app = app
+
+        self.CURRENT_APP.set(app)
         self._apps.insert(0, app)
 
     @contextmanager
@@ -114,19 +137,18 @@ class ASGIMatchInfo(AbstractMatchInfo):
             " instead (https://github.com/mosquito/aiohttp-asgi/pull/11)!",
             DeprecationWarning,
         )
-        prev = self._current_app
-        self.add_app(app)
-        self._current_app = app
+        prev_app = self.CURRENT_APP.get()
+        self.CURRENT_APP.set(app)
         try:
             yield
         finally:
-            self._current_app = prev
-            self._apps.pop(0)
+            self.CURRENT_APP.set(prev_app)
 
     @property
     def current_app(self) -> Application:
-        app = self._current_app
-        assert app is not None
+        app = self.CURRENT_APP.get()
+        if app is None:
+            raise RuntimeError("No current app set, use add_app() method first")
         return app
 
     @current_app.setter
@@ -138,10 +160,10 @@ class ASGIMatchInfo(AbstractMatchInfo):
                         self._apps, app,
                     ),
                 )
-        self._current_app = app
+        self.CURRENT_APP.set(app)
 
     def freeze(self) -> None:
-        self._frozen = True
+        self._apps = tuple(self._apps)
 
 
 _ResponseType = Optional[Union[StreamResponse, WebSocketResponse]]
