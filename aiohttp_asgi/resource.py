@@ -83,7 +83,6 @@ class LifespanDict(TypedDict):
     asgi: ASGIDict
 
 
-
 class ASGIMatchInfo(AbstractMatchInfo):
     CURRENT_APP: ContextVar[Application] = ContextVar("CURRENT_APP")
 
