@@ -100,10 +100,6 @@ class ASGIMatchInfo(AbstractMatchInfo):
             return tuple(self._apps)
         return self._apps
 
-    @property
-    def apps(self) -> Tuple[Application, ...]:
-        return tuple(self._apps)
-
     def add_app(self, app: Application) -> None:
         if self._frozen:
             raise RuntimeError("Cannot change apps stack after .freeze() call")

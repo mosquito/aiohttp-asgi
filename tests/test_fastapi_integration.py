@@ -47,7 +47,7 @@ def aiohttp_app():
 
 
 @pytest.fixture
-async def client(event_loop, asgi_resource, aiohttp_app):
+async def client(asgi_resource, aiohttp_app):
     aiohttp_app.router.register_resource(asgi_resource)
 
     asgi_resource.lifespan_mount(aiohttp_app)
@@ -64,7 +64,7 @@ async def client(event_loop, asgi_resource, aiohttp_app):
         await test_client.close()
 
 
-async def test_route_asgi(event_loop, client: test_utils.TestClient):
+async def test_route_asgi(client: test_utils.TestClient):
     for _ in range(10):
         async with client.get("/asgi") as response:
             response.raise_for_status()
@@ -80,7 +80,7 @@ async def test_route_asgi(event_loop, client: test_utils.TestClient):
             assert err.value.status == 404      # type: ignore
 
 
-async def test_route_ws(event_loop, client: test_utils.TestClient):
+async def test_route_ws(client: test_utils.TestClient):
     async with client.ws_connect("/ws") as ws:
         for i in range(10):
             await ws.send_json({"hello": "world", "i": i})
@@ -120,7 +120,6 @@ async def dummy_middleware(request, handler):
         ),
     ),
 )
-@pytest.mark.usefixtures("event_loop")
 async def test_normalize_path_middleware(asgi_resource, middlewares):
     aiohttp_app = web.Application(middlewares=middlewares)
     aiohttp_app.router.register_resource(asgi_resource)

@@ -51,7 +51,7 @@ def aiohttp_app():
 
 
 @pytest.fixture
-async def client(event_loop, asgi_resource, aiohttp_app):
+async def client(asgi_resource, aiohttp_app):
     aiohttp_app.router.register_resource(asgi_resource)
 
     test_server = test_utils.TestServer(aiohttp_app)
@@ -66,7 +66,7 @@ async def client(event_loop, asgi_resource, aiohttp_app):
         await test_client.close()
 
 
-async def test_basic(event_loop, client: test_utils.TestClient):
+async def test_basic(client: test_utils.TestClient):
     raised = False
 
     class TestStreamResponse(web.StreamResponse):
