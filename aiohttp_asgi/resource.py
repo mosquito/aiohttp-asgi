@@ -5,13 +5,16 @@ from typing import (
     Any, Awaitable, Callable, Coroutine, Dict, Generator, List, MutableMapping,
     Optional, Set, Tuple, TypedDict, Union,
 )
+from warnings import warn
 
 from aiohttp import ClientRequest, WSMessage, WSMsgType, hdrs
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
+from aiohttp.helpers import DEBUG
 from aiohttp.web import (
     AbstractResource, Application, HTTPException, Request, StreamResponse,
     WebSocketResponse,
 )
+from urllib.parse import unquote
 from yarl import URL
 
 
@@ -70,6 +73,7 @@ class ASGIMatchInfo(AbstractMatchInfo):
         self._handler = handler
         self._apps = list()     # type: _ApplicationColelctionType
         self._current_app: Optional[Application] = None
+        self._frozen = False
 
     @property
     def handler(self) -> Callable[[Request], Awaitable[StreamResponse]]:
@@ -96,27 +100,51 @@ class ASGIMatchInfo(AbstractMatchInfo):
             return tuple(self._apps)
         return self._apps
 
+    @property
+    def apps(self) -> Tuple[Application, ...]:
+        return tuple(self._apps)
+
     def add_app(self, app: Application) -> None:
-        if isinstance(self._apps, tuple):
-            raise RuntimeError("Frozen resource")
-
-        self._apps.append(app)
-
-    def freeze(self) -> None:
-        self._apps = tuple(self.apps)
+        if self._frozen:
+            raise RuntimeError("Cannot change apps stack after .freeze() call")
+        if self._current_app is None:
+            self._current_app = app
+        self._apps.insert(0, app)
 
     @contextmanager
     def set_current_app(
         self,
         app: Application,
     ) -> Generator[None, None, None]:
+        warn("The set_current_app() context manager is deprecated, please use add_app() instead (https://github.com/mosquito/aiohttp-asgi/pull/11)!", DeprecationWarning)
         prev = self._current_app
+        self.add_app(app)
         self._current_app = app
         try:
             yield
         finally:
             self._current_app = prev
+            self._apps.pop(0)
 
+    @property
+    def current_app(self) -> Application:
+        app = self._current_app
+        assert app is not None
+        return app
+
+    @current_app.setter
+    def current_app(self, app: Application) -> None:
+        if DEBUG:  # pragma: no cover
+            if app not in self._apps:
+                raise RuntimeError(
+                    "Expected one of the following apps {!r}, got {!r}".format(
+                        self._apps, app
+                    )
+                )
+        self._current_app = app
+
+    def freeze(self) -> None:
+        self._frozen = True
 
 _ResponseType = Optional[Union[StreamResponse, WebSocketResponse]]
 _WriterType = Optional[AbstractStreamWriter]
@@ -172,7 +200,15 @@ class ASGIContext:
         if self.is_websocket():
             result["type"] = "websocket"
             result["scheme"] = "wss" if self.request.secure else "ws"
-            result["subprotocols"] = []
+
+            # Decode websocket subprotocol options
+            subprotocols = []
+            for header, value in result["headers"]:
+                if header == b"sec-websocket-protocol":
+                    subprotocols = [
+                        x.strip() for x in unquote(value.decode("ascii")).split(",")
+                    ]
+            result["subprotocols"] = subprotocols
 
         return result
 
@@ -244,7 +280,7 @@ class ASGIContext:
             if self.start_response_event.is_set():
                 raise asyncio.InvalidStateError
 
-            self.response = WebSocketResponse()
+            self.response = WebSocketResponse(protocols=self.scope["subprotocols"])
             self.writer = await self.response.prepare(self.request)
             return
 
