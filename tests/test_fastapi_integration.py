@@ -1,7 +1,3 @@
-import asyncio
-from asyncio import current_task
-from ctypes import pythonapi
-
 import aiohttp
 import pytest
 from aiohttp import test_utils, web
