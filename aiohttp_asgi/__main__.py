@@ -9,6 +9,7 @@ import aiohttp.web
 from aiohttp_asgi import ASGIResource
 from aiohttp_asgi.resource import ASGIApplicationType
 
+
 parser = ArgumentParser(prog="aiohttp-asgi")
 group = parser.add_argument_group("HTTP options")
 group.add_argument("-a", "--address", help="Listen address", default="::1")
@@ -51,7 +52,7 @@ log = logging.getLogger()
 
 def bind_socket(
     *args: Any, address: str, port: int,
-    reuse_addr: bool = True, reuse_port: bool = False
+    reuse_addr: bool = True, reuse_port: bool = False,
 ) -> socket.socket:
     if not args:
         if ":" in address:

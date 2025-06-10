@@ -40,7 +40,7 @@ packages = [
 "Documentation" = "https://github.com/mosquito/aiohttp-asgi/blob/master/README.md"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 aiohttp = "^3"
 
 [tool.poetry.group.dev.dependencies]
@@ -55,6 +55,7 @@ fastapi = "^0.88.0"
 pylava = "^0.3.0"
 pytest-aiohttp = "^1.0.4"
 pytest-cov = "^4.0.0"
+setuptools = "^80.9.0"
 
 [tool.poetry.scripts]
 aiohttp-asgi = 'aiohttp_asgi.__main__:main'
