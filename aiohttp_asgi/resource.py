@@ -145,7 +145,7 @@ class ASGIMatchInfo(AbstractMatchInfo):
 
     @property
     def current_app(self) -> Application:
-        app = self.CURRENT_APP.get()
+        app = self.CURRENT_APP.get(None)
         if app is None:
             raise RuntimeError("No current app set, use add_app() method first")
         return app
