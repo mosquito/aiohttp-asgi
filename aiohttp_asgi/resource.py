@@ -1,10 +1,12 @@
 import asyncio
 import logging
 from contextlib import contextmanager
+from types import MappingProxyType
 from typing import (
-    Any, Awaitable, Callable, Coroutine, Dict, Generator, List, MutableMapping,
-    Optional, Set, Tuple, TypedDict, Union,
+    Any, Awaitable, Callable, Coroutine, Dict, Generator, List, Mapping,
+    MutableMapping, Optional, Set, Tuple, TypedDict, Union,
 )
+from urllib.parse import unquote
 from warnings import warn
 
 from aiohttp import ClientRequest, WSMessage, WSMsgType, hdrs
@@ -14,7 +16,6 @@ from aiohttp.web import (
     AbstractResource, Application, HTTPException, Request, StreamResponse,
     WebSocketResponse,
 )
-from urllib.parse import unquote
 from yarl import URL
 
 
@@ -37,10 +38,6 @@ except ImportError:
 
 
 log = logging.getLogger(__name__)
-
-_ApplicationColelctionType = Union[
-    List[Application], Tuple[Application, ...],
-]
 
 
 class ScopeDict(TypedDict):
@@ -71,7 +68,7 @@ class LifespanDict(TypedDict):
 class ASGIMatchInfo(AbstractMatchInfo):
     def __init__(self, handler: Callable[..., Any]):
         self._handler = handler
-        self._apps = list()     # type: _ApplicationColelctionType
+        self._apps: List[Application] = list()
         self._current_app: Optional[Application] = None
         self._frozen = False
 
@@ -112,7 +109,11 @@ class ASGIMatchInfo(AbstractMatchInfo):
         self,
         app: Application,
     ) -> Generator[None, None, None]:
-        warn("The set_current_app() context manager is deprecated, please use add_app() instead (https://github.com/mosquito/aiohttp-asgi/pull/11)!", DeprecationWarning)
+        warn(
+            "The set_current_app() context manager is deprecated, please use add_app()"
+            " instead (https://github.com/mosquito/aiohttp-asgi/pull/11)!",
+            DeprecationWarning,
+        )
         prev = self._current_app
         self.add_app(app)
         self._current_app = app
@@ -134,16 +135,18 @@ class ASGIMatchInfo(AbstractMatchInfo):
             if app not in self._apps:
                 raise RuntimeError(
                     "Expected one of the following apps {!r}, got {!r}".format(
-                        self._apps, app
-                    )
+                        self._apps, app,
+                    ),
                 )
         self._current_app = app
 
     def freeze(self) -> None:
         self._frozen = True
 
+
 _ResponseType = Optional[Union[StreamResponse, WebSocketResponse]]
 _WriterType = Optional[AbstractStreamWriter]
+_SendHandlerMapType = Mapping[str, Callable[[Dict[str, Any]], Awaitable[None]]]
 
 
 class ASGIContext:
@@ -167,6 +170,13 @@ class ASGIContext:
         self.writer: _WriterType = None
         self.task: Optional[asyncio.Task] = None
         self.loop = asyncio.get_event_loop()
+
+        self.send_type_handler_map: _SendHandlerMapType = MappingProxyType({
+            "http.response.start": self.on_send_response_start,
+            "websocket.accept": self.on_send_websocket_accept,
+            "http.response.body": self.on_send_http_response_body,
+            "websocket.send": self.on_send_websocket_send,
+        })
 
     def is_websocket(self) -> bool:
         return (
@@ -253,80 +263,77 @@ class ASGIContext:
             "more_body": not self.request.content.at_eof(),
         }
 
+    async def on_send_response_start(self, payload: Dict[str, Any]) -> None:
+        if self.start_response_event.is_set():
+            raise asyncio.InvalidStateError
+
+        self.response = StreamResponse()
+        self.response.set_status(payload["status"])
+
+        for name, value in payload.get("headers", ()):
+            header_name = name.title().decode()
+            self.response.headers[header_name] = value.decode()
+
+        if not self.response.headers.get(hdrs.CONTENT_LENGTH):
+            self.response.enable_chunked_encoding()
+
+        self.writer = await self.response.prepare(self.request)
+        self.start_response_event.set()
+
+    async def on_send_websocket_accept(self, _: Dict[str, Any]) -> None:
+        if self.start_response_event.is_set():
+            raise asyncio.InvalidStateError
+
+        self.response = WebSocketResponse(protocols=self.scope["subprotocols"] or ())
+        self.writer = await self.response.prepare(self.request)
+
+    async def on_send_websocket_send(self, payload: Dict[str, Any]) -> None:
+        if (
+            isinstance(self.response, WebSocketResponse) and
+            self.response.closed
+        ):
+            raise TypeError("Unexpected message %r" % payload, payload)
+
+        if not isinstance(self.response, WebSocketResponse):
+            raise RuntimeError("Wrong response type")
+
+        message_bytes = payload.get("bytes")
+        message_text = payload.get("text")
+
+        if not any((message_text, message_bytes)):
+            raise TypeError(
+                "Exactly one of bytes or text must be non-None."
+                " One or both keys may be present, however.",
+            )
+
+        if message_bytes is not None:
+            await self.response.send_bytes(message_bytes)
+
+        if message_text is not None:
+            await self.response.send_str(message_text)
+
+    async def on_send_http_response_body(self, payload: Dict[str, Any]) -> None:
+        if self.writer is None:
+            raise TypeError("Unexpected message %r" % payload, payload)
+        body = payload.get("body")
+        if body is None:
+            return
+
+        if payload.get("more_body", False):
+            await self.writer.write(body)
+            return
+
+        await self.writer.write_eof(body)
+
     async def on_send(self, payload: Dict[str, Any]) -> None:
-        if payload["type"] == "http.response.start":
-            if self.start_response_event.is_set():
-                raise asyncio.InvalidStateError
-
-            self.response = StreamResponse()
-            self.response.set_status(payload["status"])
-
-            for name, value in payload.get("headers", ()):
-                header_name = name.title().decode()
-                self.response.headers[header_name] = value.decode()
-
-            if not self.response.headers.get(hdrs.CONTENT_LENGTH):
-                self.response.enable_chunked_encoding()
-
-            self.writer = await self.response.prepare(self.request)
-            self.start_response_event.set()
+        handler = self.send_type_handler_map.get(payload["type"], None)
+        if handler is None:
+            log.error("Unexpected ASGI message type %r, payload: %r", payload["type"], payload)
             return
-
-        if payload["type"] == "websocket.accept":
-            if self.start_response_event.is_set():
-                raise asyncio.InvalidStateError
-
-            self.response = WebSocketResponse(protocols=self.scope["subprotocols"])
-            self.writer = await self.response.prepare(self.request)
-            return
-
-        if payload["type"] == "http.response.body":
-            if self.writer is None:
-                raise TypeError("Unexpected message %r" % payload, payload)
-            body = payload.get('body')
-            if body is None:
-                return
-
-            if payload.get("more_body", False):
-                await self.writer.write(body)
-                return
-
-            await self.writer.write_eof(body)
-            return
-
-        if payload["type"] == "websocket.send":
-            if (
-                isinstance(self.response, WebSocketResponse) and
-                self.response.closed
-            ):
-                raise TypeError("Unexpected message %r" % payload, payload)
-
-            if not isinstance(self.response, WebSocketResponse):
-                raise RuntimeError("Wrong response type")
-
-            message_bytes = payload.get("bytes")
-            message_text = payload.get("text")
-
-            if not any((message_text, message_bytes)):
-                raise TypeError(
-                    "Exactly one of bytes or text must be non-None."
-                    " One or both keys may be present, however.",
-                )
-
-            if message_bytes is not None:
-                await self.response.send_bytes(message_bytes)
-
-            if message_text is not None:
-                await self.response.send_str(message_text)
-
-            return
+        await handler(payload)
 
     async def get_response(self) -> Union[StreamResponse, WebSocketResponse]:
-        await self.app(
-            self.scope,
-            self.on_receive,
-            self.on_send,
-        )
+        await self.app(self.scope, self.on_receive, self.on_send)
 
         if self.response is None:
             raise RuntimeError
