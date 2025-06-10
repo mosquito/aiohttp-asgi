@@ -115,7 +115,7 @@ class ASGIMatchInfo(AbstractMatchInfo):
 
     @property
     def apps(self) -> Tuple[Application, ...]:
-        if self.frozen:
+        if isinstance(self._apps, tuple):
             return self._apps
         return tuple(self._apps)
 
