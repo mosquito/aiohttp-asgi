@@ -139,6 +139,7 @@ async def test_normalize_path_middleware(asgi_resource, middlewares):
     asgi_resource.lifespan_mount(aiohttp_app)
 
     async with test_utils.TestServer(aiohttp_app) as test_server:
+        client: test_utils.TestClient
         async with test_utils.TestClient(test_server) as client:
             async with client.get("/asgi") as response:
                 response.raise_for_status()
