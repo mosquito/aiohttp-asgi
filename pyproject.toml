@@ -47,7 +47,7 @@ aiohttp-asgi = "aiohttp_asgi.__main__:main"
 Homepage = "https://github.com/mosquito/aiohttp-asgi"
 Source = "https://github.com/mosquito/aiohttp-asgi"
 Tracker = "https://github.com/mosquito/aiohttp-asgi/issues"
-Documentation = "https://github.com/mosquito/aiohttp-asgi/blob/master/README.md"
+Documentation = "https://mosquito.github.io/aiohttp-asgi/"
 
 [dependency-groups]
 dev = [
@@ -61,6 +61,14 @@ dev = [
 ]
 mypy = [
     "mypy>=1.13",
+]
+docs = [
+    "sphinx>=7.0",
+    "furo>=2024.0",
+    "myst-parser>=3.0",
+    "sphinx-copybutton>=0.5",
+    "sphinx-autodoc-typehints>=2.0",
+    "sphinx-design>=0.6",
 ]
 
 [tool.uv]

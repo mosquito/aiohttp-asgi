@@ -5,6 +5,9 @@ aiohttp-asgi
 
 This module provides a way to use any ASGI compatible frameworks and aiohttp together.
 
+Documentation: <https://mosquito.github.io/aiohttp-asgi/>. The sources are in
+`docs/`, build the HTML locally with `make -C docs html`.
+
 Example
 -------
 
@@ -145,4 +148,5 @@ uv sync --all-extras
 uv run pytest
 uv run ruff check
 uv run mypy
+make -C docs html
 ```
