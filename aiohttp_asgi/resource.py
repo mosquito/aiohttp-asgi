@@ -12,17 +12,14 @@ from typing import (
 from urllib.parse import unquote
 from warnings import warn
 
-from aiohttp import ClientRequest, WSMessage, WSMsgType, hdrs
+from aiohttp import ClientRequest, HttpVersion11, WSMessage, WSMsgType, hdrs
 from aiohttp.abc import AbstractMatchInfo, AbstractStreamWriter
 from aiohttp.helpers import DEBUG
 from aiohttp.web import (
-    AbstractResource, AbstractRoute, Application, HTTPException, Request,
-    StreamResponse, WebSocketResponse,
+    AbstractResource, AbstractRoute, Application, HTTPException,
+    HTTPExpectationFailed, Request, StreamResponse, WebSocketResponse,
 )
 from aiohttp.web_urldispatcher import AbstractRuleMatching
-from aiohttp.web_urldispatcher import (
-    _default_expect_handler as default_expect_handler,
-)
 from yarl import URL
 
 
@@ -37,6 +34,31 @@ ASGIApplicationType = Callable[
 
 
 log = logging.getLogger(__name__)
+
+
+async def default_expect_handler(request: Request) -> None:
+    """
+    Send "100 Continue" to the client when the client expects it.
+
+    aiohttp calls this handler before it reads the request body. ASGI has no
+    expect mechanism, therefore the adapter accepts the body and lets the ASGI
+    application read it. An unknown Expect value gives 417.
+
+    This repeats `aiohttp.web_urldispatcher._default_expect_handler`, because
+    that function is private.
+    """
+    expect = request.headers.get(hdrs.EXPECT, "")
+
+    if request.version != HttpVersion11:
+        return
+
+    if expect.lower() != "100-continue":
+        raise HTTPExpectationFailed(text="Unknown Expect: %s" % expect)
+
+    await request.writer.write(b"HTTP/1.1 100 Continue\r\n\r\n")
+
+    # The main body is not started yet, so the counter must start from zero.
+    request.writer.output_size = 0
 
 
 class ResourceInfoDict(TypedDict, total=False):
@@ -99,7 +121,9 @@ class ASGIMatchInfo(AbstractMatchInfo):
         return self._handler
 
     @property
-    def expect_handler(self) -> Optional[Callable[[Request], Awaitable[None]]]:
+    def expect_handler(
+        self,
+    ) -> Callable[[Request], Awaitable[Optional[StreamResponse]]]:
         return default_expect_handler
 
     @property

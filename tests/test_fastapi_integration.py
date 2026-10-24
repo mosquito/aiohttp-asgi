@@ -167,10 +167,36 @@ async def test_expect_handler_basic(client: test_utils.TestClient):
     async with client.post(
         "/upload",
         data=test_data,
-        headers={"Expect": "100-continue", "Content-Type": "application/octet-stream"},
+        headers={
+            "Expect": "100-continue",
+            "Content-Type": "application/octet-stream",
+        },
     ) as resp:
         assert resp.status == 200
         data = await resp.json()
 
+        assert data["received_expect"] == "100-continue"
         assert data["body_size"] == len(test_data)
         assert data["message"] == "success"
+
+
+async def test_expect_handler_continue(client: test_utils.TestClient):
+    # expect100 makes the client wait for "100 Continue" before the body.
+    test_data = b"This is test data for upload"
+
+    async with client.post(
+        "/upload", data=test_data, expect100=True,
+    ) as resp:
+        assert resp.status == 200
+        data = await resp.json()
+
+        assert data["received_expect"] == "100-continue"
+        assert data["body_size"] == len(test_data)
+        assert data["message"] == "success"
+
+
+async def test_expect_handler_unknown_value(client: test_utils.TestClient):
+    async with client.post(
+        "/upload", data=b"test data", headers={"Expect": "unknown-value"},
+    ) as resp:
+        assert resp.status == 417
