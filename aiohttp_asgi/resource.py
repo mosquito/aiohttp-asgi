@@ -156,8 +156,9 @@ class ASGIMatchInfo(AbstractMatchInfo):
         app: Application,
     ) -> Generator[None, None, None]:
         warn(
-            "The set_current_app() context manager is deprecated, please use add_app()"
-            " instead (https://github.com/mosquito/aiohttp-asgi/pull/11)!",
+            "The set_current_app() context manager is deprecated, please"
+            " use add_app() instead"
+            " (https://github.com/mosquito/aiohttp-asgi/pull/11)!",
             DeprecationWarning,
         )
         prev_app = self.CURRENT_APP.get()
@@ -257,7 +258,8 @@ class ASGIContext:
             for header, value in result["headers"]:
                 if header == b"sec-websocket-protocol":
                     subprotocols = [
-                        x.strip() for x in unquote(value.decode("ascii")).split(",")
+                        x.strip()
+                        for x in unquote(value.decode("ascii")).split(",")
                     ]
             result["subprotocols"] = subprotocols
 
@@ -329,7 +331,9 @@ class ASGIContext:
         if self.start_response_event.is_set():
             raise asyncio.InvalidStateError
 
-        self.response = WebSocketResponse(protocols=self.scope["subprotocols"] or ())
+        self.response = WebSocketResponse(
+            protocols=self.scope["subprotocols"] or (),
+        )
         self.writer = await self.response.prepare(self.request)
 
     async def on_send_websocket_send(self, payload: Dict[str, Any]) -> None:
@@ -373,7 +377,10 @@ class ASGIContext:
     async def on_send(self, payload: Dict[str, Any]) -> None:
         handler = self.send_type_handler_map.get(payload["type"], None)
         if handler is None:
-            log.error("Unexpected ASGI message type %r, payload: %r", payload["type"], payload)
+            log.error(
+                "Unexpected ASGI message type %r, payload: %r",
+                payload["type"], payload,
+            )
             return
         await handler(payload)
 

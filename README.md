@@ -93,3 +93,15 @@ python -m aiohttp_asgi \
     --port 8080 \
     test_app:application
 ```
+
+Development
+-----------
+
+The project uses [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv sync --all-extras
+uv run pytest
+uv run ruff check
+uv run mypy
+```
