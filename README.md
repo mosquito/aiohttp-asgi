@@ -51,6 +51,13 @@ Installation
 pip install aiohttp-asgi
 ```
 
+The faster event loops are optional extras:
+
+```bash
+pip install "aiohttp-asgi[uvloop]"
+pip install "aiohttp-asgi[rloop]"
+```
+
 ASGI HTTP server
 ----------------
 
@@ -92,6 +99,40 @@ python -m aiohttp_asgi \
     --address "[::1]" \
     --port 8080 \
     test_app:application
+```
+
+#### Multiple worker processes
+
+The `-w/--workers` option starts more than one worker process. The parent
+process binds the socket, then
+[forklib](https://github.com/mosquito/forklib) forks the workers, so all
+workers accept connections from one shared socket. The parent process does not
+serve requests, it supervises the workers. Zero starts one worker for each CPU.
+
+```bash
+aiohttp-asgi --workers 4 test_app:application
+```
+
+The package requires forklib on Linux, therefore the option works there
+without an additional step. On other POSIX systems install forklib with
+`pip install forklib`. The CLI shows the option only when forklib is
+installed, so the option is not available on Windows, which has no `fork`.
+
+Each worker imports the ASGI application after the fork, because an
+application can start threads or event loops on import, and the fork does not
+copy them correctly.
+
+#### Event loop
+
+Choose an event loop with `--event-loop=stdlib`, `--event-loop=uvloop` or
+`--event-loop=rloop`. The CLI only offers optional loops that are installed;
+`stdlib` is always available. The default preference order is
+`rloop`, then [uvloop](https://github.com/MagicStack/uvloop), then stdlib.
+Each worker imports and creates its event loop after the fork.
+
+```bash
+pip install "aiohttp-asgi[uvloop]"
+aiohttp-asgi --workers 4 --event-loop=uvloop test_app:application
 ```
 
 Development

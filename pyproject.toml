@@ -31,7 +31,14 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp>=3,<4",
+    # Linux is the usual server platform, so the workers option works
+    # there without an additional step.
+    "forklib>=0.5,<0.6 ; sys_platform == 'linux'",
 ]
+
+[project.optional-dependencies]
+uvloop = ["uvloop>=0.17 ; sys_platform != 'win32'"]
+rloop = ["rloop>=0.5 ; sys_platform != 'win32' and python_version >= '3.10'"]
 
 [project.scripts]
 aiohttp-asgi = "aiohttp_asgi.__main__:main"
@@ -46,6 +53,7 @@ Documentation = "https://github.com/mosquito/aiohttp-asgi/blob/master/README.md"
 dev = [
     "coveralls>=3.3.1",
     "fastapi>=0.88",
+    "forklib>=0.5,<0.6 ; sys_platform != 'win32'",
     "pytest>=7.2",
     "pytest-aiohttp>=1.0.4",
     "pytest-cov>=4",
@@ -89,6 +97,11 @@ files = [
     "aiohttp_asgi",
     "tests",
 ]
+
+
+[[tool.mypy.overrides]]
+module = ["forklib"]
+ignore_missing_imports = true
 
 
 [[tool.mypy.overrides]]

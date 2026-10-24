@@ -106,6 +106,13 @@ class LifespanDict(TypedDict):
 
 
 class ASGIMatchInfo(AbstractMatchInfo):
+    """
+    The match info which `ASGIResource.resolve()` returns.
+
+    aiohttp takes the handler, the application stack and the expect handler
+    from this object.
+    """
+
     CURRENT_APP: ContextVar[Application] = ContextVar("CURRENT_APP")
 
     def __init__(self, handler: Callable[..., Any]):
@@ -196,6 +203,13 @@ _SendHandlerMapType = Mapping[str, Callable[[Dict[str, Any]], Awaitable[None]]]
 
 
 class ASGIContext:
+    """
+    The bridge between one aiohttp request and the ASGI application.
+
+    The context builds the ASGI scope, moves the body in both directions and
+    makes the aiohttp response.
+    """
+
     _ws_close_codes = frozenset((
         WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR,
     ))
@@ -394,6 +408,24 @@ class ASGIContext:
 
 
 class ASGIResource(AbstractResource):
+    """
+    An aiohttp resource which serves an ASGI application.
+
+    Register it in an aiohttp router, and the ASGI application answers every
+    request which starts with `root_path`.
+
+    .. code-block:: python
+
+        resource = ASGIResource(asgi_app, root_path="/api")
+        aiohttp_app.router.register_resource(resource)
+        resource.lifespan_mount(aiohttp_app)
+
+    :param app: the ASGI application.
+    :param root_path: the path prefix of the application.
+    :param name: the resource name for the aiohttp router.
+    """
+
+    #: Maximum time in seconds to wait for the lifespan task after shutdown.
     SHUTDOWN_TIMEOUT = 60
 
     def __init__(
@@ -427,6 +459,7 @@ class ASGIResource(AbstractResource):
         raise NotImplementedError
 
     def raw_match(self, path: str) -> bool:
+        """Return True when the path starts with the resource `root_path`."""
         return path.startswith(self._root_path)
 
     async def resolve(
@@ -452,6 +485,16 @@ class ASGIResource(AbstractResource):
         )
 
     def lifespan_mount(self, app: Application) -> None:
+        """
+        Send the ASGI lifespan events with the aiohttp application.
+
+        The method appends a cleanup context to the aiohttp application. The
+        context sends `lifespan.startup` on startup, and `lifespan.shutdown`
+        on shutdown. Without this call the ASGI application gets no lifespan
+        events.
+
+        :param app: the aiohttp application which gives the events.
+        """
         async def lifespan(_: Any) -> Any:
             loop = asyncio.get_event_loop()
             receives: asyncio.Queue = asyncio.Queue()
@@ -468,7 +511,21 @@ class ASGIResource(AbstractResource):
             )
 
             while True:
-                msg = await sends.get()
+                startup = loop.create_task(sends.get())
+                await asyncio.wait(
+                    (startup, asgi_lifespan_task),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if not startup.done():
+                    startup.cancel()
+                    await asyncio.gather(startup, return_exceptions=True)
+                    try:
+                        asgi_lifespan_task.result()
+                    except Exception:
+                        log.info("ASGI application does not support lifespan")
+                    yield
+                    return
+                msg = startup.result()
                 if msg["type"] == "lifespan.startup.complete":
                     log.info(
                         "ASGI application %r startup completed.",
